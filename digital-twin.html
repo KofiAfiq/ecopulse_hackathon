@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoPulse 3D Digital Twin — Rumah Sampah AI Scanner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        body { margin: 0; overflow: hidden; background: #0B0F17; }
+        #webgl-container { position: absolute; inset: 0; z-index: 0; }
+        .hud-glass { background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .hud-pill { transition: all 0.2s ease; }
+        .hud-pill:hover { transform: translateY(-1px); }
+        .laser-glow { text-shadow: 0 0 10px #10B981; }
+        .alert-glow { animation: pulseAlert 1.5s infinite alternate; }
+        @keyframes pulseAlert {
+            0% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); border-color: rgba(239, 68, 68, 0.5); }
+            100% { box-shadow: 0 0 30px rgba(239, 68, 68, 0.8); border-color: rgba(239, 68, 68, 1); }
+        }
+    </style>
+</head>
+<body class="text-white select-none">
+
+    <!-- 3D WebGL Canvas Container -->
+    <div id="webgl-container"></div>
+
+    <!-- ===== TOP NAVIGATION / HEADER HUD ===== -->
+    <header class="absolute top-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between gap-3 pointer-events-none">
+        <div class="hud-glass rounded-2xl px-5 py-3 flex items-center gap-3 pointer-events-auto shadow-2xl">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-lg font-black shadow-lg shadow-emerald-500/30">
+                🏢
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <h1 class="text-sm font-extrabold tracking-wide uppercase">Rumah Sampah 3D Digital Twin</h1>
+                    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                        LIVE SENSING
+                    </span>
+                </div>
+                <p class="text-[11px] text-slate-400">AI CCTV Spatial Volumetric Sweep • Sime Darby Property University Hackathon</p>
+            </div>
+        </div>
+
+        <!-- Right Quick Actions -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <a href="index.html" class="hud-glass px-4 py-2.5 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-2 shadow-lg">
+                <span>◀ Command Center</span>
+            </a>
+            <a href="animation.html" class="hud-glass px-4 py-2.5 rounded-xl text-xs font-bold text-cyan-300 hover:text-white hover:bg-slate-800/90 transition flex items-center gap-2 shadow-lg">
+                <span>🎬 3D Demo Story</span>
+            </a>
+            <button onclick="toggleHelpModal()" class="hud-glass w-10 h-10 rounded-xl text-slate-300 hover:text-white flex items-center justify-center font-bold text-sm shadow-lg">
+                ?
+            </button>
+        </div>
+    </header>
+
+    <!-- ===== TOP RIGHT: SENSOR METRICS HUD ===== -->
+    <aside class="absolute top-24 right-4 z-20 w-80 space-y-3 pointer-events-auto hidden md:block">
+        <!-- AI Vision Status -->
+        <div class="hud-glass rounded-2xl p-4 shadow-xl">
+            <div class="flex items-center justify-between mb-3 border-b border-slate-700/60 pb-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm">📹</span>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-300">YOLOv8-3D Vision Mesh</span>
+                </div>
+                <span id="cam-fps" class="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/30">60 FPS</span>
+            </div>
+
+            <div class="space-y-2 text-xs">
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-[11px]">FOV Frustum Coverage</span>
+                    <span class="font-mono text-emerald-300 font-semibold">86.4% Room Area</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-[11px]">Laser Sweep Frequency</span>
+                    <span class="font-mono text-cyan-300 font-semibold">1.2 Hz (Harmonic)</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-[11px]">Floor Distance (To Center)</span>
+                    <span id="cam-dist-text" class="font-mono text-slate-200">5.42 m</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-slate-400 text-[11px]">Detected Objects</span>
+                    <span id="detected-count" class="font-mono font-bold text-emerald-400">4 Bins + 1 E-Waste</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Ultrasonic Bin Fill Gauges -->
+        <div class="hud-glass rounded-2xl p-4 shadow-xl">
+            <div class="flex items-center justify-between mb-3 border-b border-slate-700/60 pb-2">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm">📡</span>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-300">IoT Bin Fill Radar</span>
+                </div>
+                <span class="text-[10px] text-slate-400 font-mono">40 kHz Ultrasonic</span>
+            </div>
+
+            <div class="space-y-3">
+                <!-- General Waste Bin 1 -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-semibold flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> Bin 01 (General Waste)
+                        </span>
+                        <span id="bin1-pct" class="font-mono font-bold text-emerald-400">52%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
+                        <div id="bin1-bar" class="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500" style="width: 52%"></div>
+                    </div>
+                </div>
+
+                <!-- Recyclables Bin 2 -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-semibold flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Bin 02 (Plastics & Paper)
+                        </span>
+                        <span id="bin2-pct" class="font-mono font-bold text-blue-400">38%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
+                        <div id="bin2-bar" class="bg-gradient-to-r from-blue-500 to-cyan-400 h-full rounded-full transition-all duration-500" style="width: 38%"></div>
+                    </div>
+                </div>
+
+                <!-- Smart E-Waste Locker -->
+                <div>
+                    <div class="flex justify-between text-xs mb-1">
+                        <span class="text-slate-300 font-semibold flex items-center gap-1.5">
+                            <span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Smart E-Waste Locker
+                        </span>
+                        <span id="bin3-pct" class="font-mono font-bold text-purple-400">65%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 rounded-full h-2 overflow-hidden border border-slate-700">
+                        <div id="bin3-bar" class="bg-gradient-to-r from-purple-500 to-pink-500 h-full rounded-full transition-all duration-500" style="width: 65%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-Time AI Status Banner -->
+        <div id="ai-alert-box" class="hud-glass rounded-2xl p-4 border border-emerald-500/40 bg-emerald-950/20 shadow-xl transition-all duration-300">
+            <div class="flex items-start gap-3">
+                <span id="ai-alert-icon" class="text-2xl">🛡</span>
+                <div>
+                    <p id="ai-alert-title" class="text-xs font-bold text-emerald-300 uppercase tracking-wide">Status: Normal Operation</p>
+                    <p id="ai-alert-desc" class="text-[11px] text-slate-400 mt-0.5 leading-snug">Continuous volumetric scanning active. No floor littering or spill hazard detected.</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ===== BOTTOM CONTROLS DOCK ===== -->
+    <div class="absolute bottom-6 left-1/2 -translate-x-1/2 z-20 w-full max-w-4xl px-4 pointer-events-auto">
+        <div class="hud-glass rounded-2xl p-4 shadow-2xl flex flex-wrap items-center justify-between gap-4 border border-slate-700/80">
+            <!-- Camera View Presets -->
+            <div class="flex items-center gap-2">
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Camera Preset:</span>
+                <button onclick="setCameraView('orbit')" id="btn-view-orbit" class="hud-pill px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 text-white shadow-md cursor-pointer">
+                    🌐 Free 3D Orbit
+                </button>
+                <button onclick="setCameraView('cctv')" id="btn-view-cctv" class="hud-pill px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">
+                    📹 CCTV POV
+                </button>
+                <button onclick="setCameraView('top')" id="btn-view-top" class="hud-pill px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">
+                    📐 Top Ortho
+                </button>
+                <button onclick="setCameraView('bins')" id="btn-view-bins" class="hud-pill px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">
+                    🗑 Bin Close-Up
+                </button>
+            </div>
+
+            <!-- Scan Modes -->
+            <div class="flex items-center gap-2">
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Scan Mode:</span>
+                <button onclick="setScanMode('laser')" id="btn-scan-laser" class="hud-pill px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-600 text-white shadow-md cursor-pointer">
+                    ⚡ Green Laser Sweep
+                </button>
+                <button onclick="setScanMode('uv')" id="btn-scan-uv" class="hud-pill px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">
+                    🔬 UV Fluorescence
+                </button>
+                <button onclick="setScanMode('cone')" id="btn-scan-cone" class="hud-pill px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer">
+                    📐 Frustum Cone
+                </button>
+            </div>
+
+            <!-- Interactive Scenario Triggers -->
+            <div class="flex items-center gap-2 w-full pt-2 border-t border-slate-700/60 justify-between">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Simulate:</span>
+                    <button onclick="triggerLitterAnomaly()" id="btn-litter" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-600/80 hover:bg-rose-600 text-white transition shadow-lg cursor-pointer">
+                        🚨 Floor Litter Anomaly
+                    </button>
+                    <button onclick="triggerOverflowBin()" id="btn-overflow" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-600/80 hover:bg-amber-600 text-white transition shadow-lg cursor-pointer">
+                        📈 Bin 01 Overflow (94%)
+                    </button>
+                    <button onclick="triggerEnzymeSpray()" id="btn-spray" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-cyan-600/80 hover:bg-cyan-600 text-white transition shadow-lg cursor-pointer">
+                        💨 Bio-Enzyme Mist Spray
+                    </button>
+                    <button onclick="resetScenario()" class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer">
+                        ↺ Reset Scene
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <label class="text-xs text-slate-400 flex items-center gap-1.5 cursor-pointer">
+                        <input type="checkbox" id="auto-rotate-chk" onchange="toggleAutoRotate(this.checked)" checked class="rounded accent-emerald-500">
+                        <span>Auto-Orbit</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== HELP / INSTRUCTIONS MODAL ===== -->
+    <div id="help-modal" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 hidden">
+        <div class="hud-glass rounded-3xl max-w-lg w-full p-6 border border-slate-600 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+                <h3 class="text-base font-extrabold flex items-center gap-2">
+                    <span>💡</span> 3D Digital Twin Navigation Guide
+                </h3>
+                <button onclick="toggleHelpModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white">✕</button>
+            </div>
+            <div class="space-y-3 text-xs text-slate-300 leading-relaxed">
+                <p><strong>Mouse / Touch Controls:</strong></p>
+                <ul class="list-disc list-inside space-y-1 text-slate-400">
+                    <li><strong class="text-slate-200">Left Click + Drag:</strong> Rotate around Rumah Sampah</li>
+                    <li><strong class="text-slate-200">Right Click + Drag:</strong> Pan camera translation</li>
+                    <li><strong class="text-slate-200">Scroll Wheel:</strong> Zoom in / out</li>
+                </ul>
+                <p><strong>What is being visualized?</strong></p>
+                <p class="text-slate-400">
+                    This interactive 3D model portrays the **AI CCTV mounted on the ceiling corner** projecting an active volumetric scanning laser across the floor and waste bins. Real-time ultrasonic beams measure bin depths, and ceiling nozzles spray bio-enzyme deodorizing mist when odor/overflow thresholds are reached.
+                </p>
+            </div>
+            <button onclick="toggleHelpModal()" class="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-bold text-xs shadow-lg transition">
+                Got it, Let's Explore!
+            </button>
+        </div>
+    </div>
+
+<!-- ========================================== -->
+<!-- THREE.JS 3D ENGINE & SCENE LOGIC -->
+<!-- ========================================== -->
+<script>
+let scene, camera, renderer, controls;
+let roomGroup, cameraRigGroup, laserMesh, uvFloorOverlay, coneMesh;
+let bin1Group, bin2Group, binEwasteGroup, binTrashBag;
+let ultrasonicBeams = [];
+let sprayParticles, sprayGeo, sprayActive = false;
+let clock = new THREE.Clock();
+
+// Simulation State
+let currentScanMode = 'laser'; // 'laser', 'uv', 'cone'
+let litterAnomalyActive = false;
+let overflowActive = false;
+let isAutoRotating = true;
+
+const ROOM_WIDTH = 10;
+const ROOM_DEPTH = 7;
+const ROOM_HEIGHT = 4.2;
+
+// Init Engine
+function init() {
+    const container = document.getElementById('webgl-container');
+
+    // 1. Scene
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0e17);
+    scene.fog = new THREE.FogExp2(0x0a0e17, 0.04);
+
+    // 2. Camera
+    camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(8.5, 6.2, 9.5);
+
+    // 3. Renderer
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    container.appendChild(renderer.domElement);
+
+    // 4. Orbit Controls
+    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.maxPolarAngle = Math.PI / 2 - 0.02; // Don't go below floor
+    controls.minDistance = 3;
+    controls.maxDistance = 22;
+    controls.target.set(0, 1.2, 0);
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.8;
+
+    // 5. Lighting
+    setupLighting();
+
+    // 6. Build 3D Objects
+    buildRumahSampahRoom();
+    buildSmartCCTVCamera();
+    buildWasteBins();
+    buildLaserScanner();
+    buildSpraySystem();
+
+    // 7. Window Resize
+    window.addEventListener('resize', onWindowResize);
+
+    // 8. Start Loop
+    animate();
+}
+
+// --------------------------------------------
+// LIGHTING SETUP
+// --------------------------------------------
+function setupLighting() {
+    // Ambient soft industrial glow
+    const ambientLight = new THREE.AmbientLight(0x384a60, 0.9);
+    scene.add(ambientLight);
+
+    // Ceiling Main Fluorescent Tube Lights
+    const tube1 = new THREE.PointLight(0xffffff, 0.8, 12);
+    tube1.position.set(-2, 3.8, 0);
+    tube1.castShadow = true;
+    tube1.shadow.mapSize.width = 1024;
+    tube1.shadow.mapSize.height = 1024;
+    scene.add(tube1);
+
+    const tube2 = new THREE.PointLight(0xd4f4ff, 0.7, 12);
+    tube2.position.set(2, 3.8, 0);
+    tube2.castShadow = true;
+    scene.add(tube2);
+
+    // Camera Sensor Spotlight (simulates CCTV spotlight / IR illuminator)
+    const cctvSpot = new THREE.SpotLight(0x34d399, 1.2, 14, Math.PI / 5, 0.4, 1);
+    cctvSpot.position.set(-ROOM_WIDTH/2 + 0.5, ROOM_HEIGHT - 0.4, ROOM_DEPTH/2 - 0.5);
+    cctvSpot.target.position.set(0, 0, 0);
+    scene.add(cctvSpot);
+    scene.add(cctvSpot.target);
+}
+
+// --------------------------------------------
+// RUMAH SAMPAH (ROOM)
+// --------------------------------------------
+function buildRumahSampahRoom() {
+    roomGroup = new THREE.Group();
+
+    // Floor Canvas Texture with realistic tiles & yellow caution boundary
+    const floorCanvas = document.createElement('canvas');
+    floorCanvas.width = 1024;
+    floorCanvas.height = 1024;
+    const ctx = floorCanvas.getContext('2d');
+
+    // Base concrete grey tiles
+    ctx.fillStyle = '#1e2633';
+    ctx.fillRect(0, 0, 1024, 1024);
+
+    // Tile grid lines
+    ctx.strokeStyle = '#2d3748';
+    ctx.lineWidth = 4;
+    const step = 64;
+    for (let x = 0; x <= 1024; x += step) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0); ctx.lineTo(x, 1024);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, x); ctx.lineTo(1024, x);
+        ctx.stroke();
+    }
+
+    // Hazard Stripes Zone on floor for Waste Bins
+    ctx.save();
+    ctx.translate(512, 360);
+    const bayW = 780;
+    const bayH = 340;
+    ctx.strokeStyle = '#eab308';
+    ctx.lineWidth = 14;
+    ctx.strokeRect(-bayW/2, -bayH/2, bayW, bayH);
+
+    // Text label on floor
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = 'bold 22px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('SIME DARBY PROPERTY • ECOPULSE RUMAH SAMPAH BAY', 0, bayH/2 - 16);
+    ctx.restore();
+
+    const floorTexture = new THREE.CanvasTexture(floorCanvas);
+    floorTexture.wrapS = THREE.RepeatWrapping;
+    floorTexture.wrapT = THREE.RepeatWrapping;
+
+    const floorGeo = new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_DEPTH);
+    const floorMat = new THREE.MeshStandardMaterial({
+        map: floorTexture,
+        roughness: 0.6,
+        metalness: 0.2
+    });
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    floor.receiveShadow = true;
+    roomGroup.add(floor);
+
+    // Back Wall
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x18202f, roughness: 0.8 });
+    const backWall = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_HEIGHT), wallMat);
+    backWall.position.set(0, ROOM_HEIGHT / 2, -ROOM_DEPTH / 2);
+    backWall.receiveShadow = true;
+    roomGroup.add(backWall);
+
+    // Left Wall
+    const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_DEPTH, ROOM_HEIGHT), wallMat);
+    leftWall.rotation.y = Math.PI / 2;
+    leftWall.position.set(-ROOM_WIDTH / 2, ROOM_HEIGHT / 2, 0);
+    leftWall.receiveShadow = true;
+    roomGroup.add(leftWall);
+
+    // Ceiling Beam Structures
+    for (let z = -ROOM_DEPTH / 2 + 1; z < ROOM_DEPTH / 2; z += 2.4) {
+        const beamGeo = new THREE.BoxGeometry(ROOM_WIDTH, 0.15, 0.15);
+        const beamMat = new THREE.MeshStandardMaterial({ color: 0x334155, metalness: 0.8, roughness: 0.3 });
+        const beam = new THREE.Mesh(beamGeo, beamMat);
+        beam.position.set(0, ROOM_HEIGHT - 0.1, z);
+        roomGroup.add(beam);
+    }
+
+    // Ventilation Louvres on Back Wall
+    const louverGroup = new THREE.Group();
+    for (let y = 2.4; y < 3.6; y += 0.2) {
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(2.8, 0.06, 0.08), new THREE.MeshStandardMaterial({ color: 0x0f172a }));
+        slat.position.set(0, y, -ROOM_DEPTH / 2 + 0.05);
+        slat.rotation.x = 0.3;
+        louverGroup.add(slat);
+    }
+    roomGroup.add(louverGroup);
+
+    // Baseboard Curb
+    const curbMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.5 });
+    const curbBack = new THREE.Mesh(new THREE.BoxGeometry(ROOM_WIDTH, 0.15, 0.2), curbMat);
+    curbBack.position.set(0, 0.075, -ROOM_DEPTH / 2 + 0.1);
+    roomGroup.add(curbBack);
+
+    scene.add(roomGroup);
+}
+
+// --------------------------------------------
+// SMART CCTV CAMERA
+// --------------------------------------------
+function buildSmartCCTVCamera() {
+    cameraRigGroup = new THREE.Group();
+
+    // Position in corner near ceiling
+    const camX = -ROOM_WIDTH / 2 + 0.5;
+    const camY = ROOM_HEIGHT - 0.35;
+    const camZ = ROOM_DEPTH / 2 - 0.5;
+    cameraRigGroup.position.set(camX, camY, camZ);
+
+    // Wall Mount Arm
+    const armMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, metalness: 0.7, roughness: 0.4 });
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.5, 12), armMat);
+    arm.rotation.z = Math.PI / 4;
+    cameraRigGroup.add(arm);
+
+    // Dome Housing / Swivel Base
+    const housingMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
+    const baseSphere = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 16), housingMat);
+    baseSphere.position.set(0.15, -0.15, -0.15);
+    cameraRigGroup.add(baseSphere);
+
+    // Camera Cylindrical Lens Body
+    const lensBodyMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2, metalness: 0.8 });
+    const lensBody = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.12, 0.3, 16), lensBodyMat);
+    lensBody.rotation.x = Math.PI / 3;
+    lensBody.rotation.y = -Math.PI / 4;
+    lensBody.position.set(0.24, -0.25, -0.24);
+    cameraRigGroup.add(lensBody);
+
+    // Glass Lens Face
+    const glassMat = new THREE.MeshPhysicalMaterial({ color: 0x00f5ff, transmission: 0.9, opacity: 1, transparent: true, roughness: 0.1 });
+    const glassFace = new THREE.Mesh(new THREE.CircleGeometry(0.09, 16), glassMat);
+    glassFace.rotation.x = -Math.PI / 6;
+    glassFace.position.set(0.3, -0.36, -0.3);
+    cameraRigGroup.add(glassFace);
+
+    // Blinking REC LED
+    const ledGeo = new THREE.SphereGeometry(0.025, 8, 8);
+    const ledMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+    const led = new THREE.Mesh(ledGeo, ledMat);
+    led.position.set(0.22, -0.22, -0.12);
+    cameraRigGroup.add(led);
+    cameraRigGroup.userData.led = led;
+
+    // Volumetric Frustum Scanning Cone (Wireframe/Translucent)
+    const coneHeight = 6.2;
+    const coneRadius = 3.6;
+    const coneGeo = new THREE.ConeGeometry(coneRadius, coneHeight, 4, 1, true);
+    const coneMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.18,
+        depthWrite: false
+    });
+    coneMesh = new THREE.Mesh(coneGeo, coneMat);
+    coneMesh.position.set(1.8, -2.8, -1.8);
+    coneMesh.rotation.x = Math.PI / 2.8;
+    coneMesh.rotation.z = -Math.PI / 4;
+    coneMesh.visible = false;
+    cameraRigGroup.add(coneMesh);
+
+    scene.add(cameraRigGroup);
+}
+
+// --------------------------------------------
+// WASTE BINS (GENERAL, RECYCLING, E-WASTE)
+// --------------------------------------------
+function createWheelieBin(colorHex, labelText, posX, posZ) {
+    const binGroup = new THREE.Group();
+    binGroup.position.set(posX, 0, posZ);
+
+    // Bin Body (Tapered Box)
+    const bodyGeo = new THREE.BoxGeometry(0.9, 1.25, 0.8);
+    const bodyMat = new THREE.MeshStandardMaterial({
+        color: colorHex,
+        roughness: 0.45,
+        metalness: 0.1
+    });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = 0.72;
+    body.castShadow = true;
+    body.receiveShadow = true;
+    binGroup.add(body);
+
+    // Bin Lid
+    const lidMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5 });
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(0.96, 0.08, 0.86), lidMat);
+    lid.position.y = 1.38;
+    lid.castShadow = true;
+    binGroup.add(lid);
+    binGroup.userData.lid = lid;
+
+    // Handle
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.7, 8), lidMat);
+    handle.rotation.z = Math.PI / 2;
+    handle.position.set(0, 1.35, 0.44);
+    binGroup.add(handle);
+
+    // Two Wheels
+    const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8 });
+    const wheelGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.08, 16);
+    const wheelL = new THREE.Mesh(wheelGeo, wheelMat);
+    wheelL.rotation.z = Math.PI / 2;
+    wheelL.position.set(-0.48, 0.12, 0.32);
+    binGroup.add(wheelL);
+
+    const wheelR = wheelL.clone();
+    wheelR.position.x = 0.48;
+    binGroup.add(wheelR);
+
+    // Ultrasonic Sensor on Lid Underside (Small Sensor Pod)
+    const podMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8, metalness: 0.8 });
+    const sensorPod = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.04, 12), podMat);
+    sensorPod.position.set(0, 1.34, 0);
+    binGroup.add(sensorPod);
+
+    // Ultrasonic Beam line into bin
+    const beamGeo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(posX, 1.32, posZ),
+        new THREE.Vector3(posX, 0.6, posZ)
+    ]);
+    const beamMat = new THREE.LineDashedMaterial({
+        color: 0x38bdf8,
+        dashSize: 0.1,
+        gapSize: 0.05,
+        linewidth: 2,
+        transparent: true,
+        opacity: 0.8
+    });
+    const beamLine = new THREE.Line(beamGeo, beamMat);
+    beamLine.computeLineDistances();
+    scene.add(beamLine);
+    ultrasonicBeams.push(beamLine);
+
+    // Front Icon / Decal Plate
+    const plateGeo = new THREE.PlaneGeometry(0.5, 0.3);
+    const plateCanvas = document.createElement('canvas');
+    plateCanvas.width = 256; plateCanvas.height = 128;
+    const pctx = plateCanvas.getContext('2d');
+    pctx.fillStyle = '#ffffff';
+    pctx.fillRect(0, 0, 256, 128);
+    pctx.fillStyle = '#0f172a';
+    pctx.font = 'bold 26px Inter, sans-serif';
+    pctx.textAlign = 'center';
+    pctx.fillText(labelText, 128, 70);
+    const plateTex = new THREE.CanvasTexture(plateCanvas);
+    const plate = new THREE.Mesh(plateGeo, new THREE.MeshBasicMaterial({ map: plateTex }));
+    plate.position.set(0, 0.85, 0.41);
+    binGroup.add(plate);
+
+    scene.add(binGroup);
+    return binGroup;
+}
+
+// Build Smart E-Waste Drop-Off Locker
+function createSmartEWasteLocker(posX, posZ) {
+    const lockerGroup = new THREE.Group();
+    lockerGroup.position.set(posX, 0, posZ);
+
+    // Main Kiosk Housing
+    const kioskMat = new THREE.MeshStandardMaterial({ color: 0x1e1b4b, metalness: 0.3, roughness: 0.4 });
+    const kiosk = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 0.8), kioskMat);
+    kiosk.position.y = 0.9;
+    kiosk.castShadow = true;
+    lockerGroup.add(kiosk);
+
+    // Glowing Neon Emerald Trim Frame
+    const trimMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(1.24, 0.04, 0.84), trimMat);
+    trim.position.y = 1.8;
+    lockerGroup.add(trim);
+
+    // Interactive Drop Chute
+    const chuteMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2 });
+    const chute = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.35, 0.1), chuteMat);
+    chute.position.set(0, 1.1, 0.41);
+    lockerGroup.add(chute);
+
+    // Digital OLED Screen
+    const screenGeo = new THREE.PlaneGeometry(0.6, 0.25);
+    const screenCanvas = document.createElement('canvas');
+    screenCanvas.width = 256; screenCanvas.height = 128;
+    const sctx = screenCanvas.getContext('2d');
+    sctx.fillStyle = '#041014';
+    sctx.fillRect(0, 0, 256, 128);
+    sctx.fillStyle = '#34d399';
+    sctx.font = 'bold 22px Inter, sans-serif';
+    sctx.textAlign = 'center';
+    sctx.fillText('E-WASTE REBATE', 128, 48);
+    sctx.font = '16px monospace';
+    sctx.fillText('+50 PTS / RM 5.00', 128, 85);
+    const screenTex = new THREE.CanvasTexture(screenCanvas);
+    const screen = new THREE.Mesh(screenGeo, new THREE.MeshBasicMaterial({ map: screenTex }));
+    screen.position.set(0, 1.48, 0.41);
+    lockerGroup.add(screen);
+
+    scene.add(lockerGroup);
+    return lockerGroup;
+}
+
+function buildWasteBins() {
+    // 1. General Waste (Green)
+    bin1Group = createWheelieBin(0x059669, 'GENERAL', -2.4, -1.2);
+
+    // 2. Recyclables (Blue)
+    bin2Group = createWheelieBin(0x2563eb, 'RECYCLE', -1.0, -1.2);
+
+    // 3. Smart E-Waste Locker (Purple/Emerald Kiosk)
+    binEwasteGroup = createSmartEWasteLocker(1.2, -1.2);
+
+    // 4. Floor Litter Anomaly (Hidden by default, shown when scenario triggers)
+    const bagGeo = new THREE.DodecahedronGeometry(0.24, 1);
+    const bagMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.7 });
+    binTrashBag = new THREE.Mesh(bagGeo, bagMat);
+    binTrashBag.scale.set(1.4, 0.8, 1.1);
+    binTrashBag.position.set(-0.4, 0.18, 0.8);
+    binTrashBag.castShadow = true;
+    binTrashBag.visible = false;
+
+    // Red 3D Anomaly Bounding Box Frame over Litter
+    const bboxGeo = new THREE.BoxGeometry(0.7, 0.5, 0.6);
+    const bboxEdges = new THREE.EdgesGeometry(bboxGeo);
+    const bboxLine = new THREE.LineSegments(bboxEdges, new THREE.LineBasicMaterial({ color: 0xef4444, linewidth: 2 }));
+    binTrashBag.add(bboxLine);
+
+    scene.add(binTrashBag);
+}
+
+// --------------------------------------------
+// LASER SCANNING SYSTEM & UV HEATMAP
+// --------------------------------------------
+function buildLaserScanner() {
+    // Sweeping Horizontal Laser Plane Line
+    const laserGeo = new THREE.PlaneGeometry(ROOM_WIDTH - 0.5, 0.08);
+    const laserMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide
+    });
+    laserMesh = new THREE.Mesh(laserGeo, laserMat);
+    laserMesh.rotation.x = Math.PI / 2;
+    laserMesh.position.set(0, 0.05, 0);
+    scene.add(laserMesh);
+
+    // Secondary Laser Fan Beam (Vertical Curtain from camera down to scanning line)
+    const fanGeo = new THREE.BufferGeometry();
+    const camPos = new THREE.Vector3(-ROOM_WIDTH/2 + 0.5, ROOM_HEIGHT - 0.4, ROOM_DEPTH/2 - 0.5);
+    const fanVertices = new Float32Array([
+        camPos.x, camPos.y, camPos.z,
+        -ROOM_WIDTH/2 + 0.5, 0.05, 0,
+        ROOM_WIDTH/2 - 0.5, 0.05, 0
+    ]);
+    fanGeo.setAttribute('position', new THREE.BufferAttribute(fanVertices, 3));
+    const fanMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false
+    });
+    laserMesh.userData.fan = new THREE.Mesh(fanGeo, fanMat);
+    scene.add(laserMesh.userData.fan);
+
+    // UV Fluorescence Surface Floor Overlay (glowing purple/magenta spots)
+    const uvCanvas = document.createElement('canvas');
+    uvCanvas.width = 512; uvCanvas.height = 512;
+    const uctx = uvCanvas.getContext('2d');
+    uctx.clearRect(0, 0, 512, 512);
+
+    // Draw UV glowing contamination hotspots
+    const grad1 = uctx.createRadialGradient(280, 340, 10, 280, 340, 90);
+    grad1.addColorStop(0, 'rgba(168, 85, 247, 0.9)');
+    grad1.addColorStop(0.5, 'rgba(34, 197, 94, 0.6)');
+    grad1.addColorStop(1, 'rgba(168, 85, 247, 0)');
+    uctx.fillStyle = grad1;
+    uctx.beginPath(); uctx.arc(280, 340, 90, 0, Math.PI * 2); uctx.fill();
+
+    const uvTex = new THREE.CanvasTexture(uvCanvas);
+    const uvMat = new THREE.MeshBasicMaterial({
+        map: uvTex,
+        transparent: true,
+        opacity: 0.95,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+    });
+    uvFloorOverlay = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_WIDTH, ROOM_DEPTH), uvMat);
+    uvFloorOverlay.rotation.x = -Math.PI / 2;
+    uvFloorOverlay.position.y = 0.02;
+    uvFloorOverlay.visible = false;
+    scene.add(uvFloorOverlay);
+}
+
+// --------------------------------------------
+// AUTOMATED BIO-ENZYME MIST SPRAY SYSTEM
+// --------------------------------------------
+function buildSpraySystem() {
+    const particleCount = 400;
+    sprayGeo = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const velocities = new Float32Array(particleCount * 3);
+
+    for (let i = 0; i < particleCount; i++) {
+        positions[i * 3 + 0] = (Math.random() - 0.5) * 6; // X
+        positions[i * 3 + 1] = ROOM_HEIGHT - 0.2;         // Y ceiling nozzle
+        positions[i * 3 + 2] = (Math.random() - 0.5) * 3; // Z
+
+        velocities[i * 3 + 0] = (Math.random() - 0.5) * 0.4;
+        velocities[i * 3 + 1] = -Math.random() * 2.2 - 1.2;
+        velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+    }
+
+    sprayGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    sprayGeo.userData.velocities = velocities;
+
+    const sprayMat = new THREE.PointsMaterial({
+        color: 0x38bdf8,
+        size: 0.08,
+        transparent: true,
+        opacity: 0.65,
+        blending: THREE.AdditiveBlending
+    });
+
+    sprayParticles = new THREE.Points(sprayGeo, sprayMat);
+    sprayParticles.visible = false;
+    scene.add(sprayParticles);
+}
+
+// --------------------------------------------
+// ANIMATION & RENDER LOOP
+// --------------------------------------------
+function animate() {
+    requestAnimationFrame(animate);
+
+    const delta = clock.getDelta();
+    const elapsed = clock.getElapsedTime();
+
+    // 1. Controls update
+    controls.update();
+
+    // 2. Camera REC LED Blink
+    if (cameraRigGroup && cameraRigGroup.userData.led) {
+        cameraRigGroup.userData.led.visible = Math.sin(elapsed * 6) > 0;
+    }
+
+    // 3. Laser Sweep Animation
+    if (laserMesh) {
+        // Sweep Z back and forth across floor
+        const sweepZ = Math.sin(elapsed * 1.5) * (ROOM_DEPTH / 2 - 0.8);
+        laserMesh.position.z = sweepZ;
+
+        // Update fan curtain geometry
+        const fan = laserMesh.userData.fan;
+        if (fan) {
+            const camPos = new THREE.Vector3(-ROOM_WIDTH/2 + 0.5, ROOM_HEIGHT - 0.4, ROOM_DEPTH/2 - 0.5);
+            const posAttr = fan.geometry.attributes.position;
+            posAttr.setXYZ(0, camPos.x, camPos.y, camPos.z);
+            posAttr.setXYZ(1, -ROOM_WIDTH/2 + 0.5, 0.05, sweepZ);
+            posAttr.setXYZ(2, ROOM_WIDTH/2 - 0.5, 0.05, sweepZ);
+            posAttr.needsUpdate = true;
+        }
+
+        // Color pulse based on mode
+        if (currentScanMode === 'laser') {
+            laserMesh.material.color.setHex(litterAnomalyActive ? 0xef4444 : 0x10b981);
+            if (fan) fan.material.color.setHex(litterAnomalyActive ? 0xef4444 : 0x10b981);
+        } else if (currentScanMode === 'uv') {
+            laserMesh.material.color.setHex(0xa855f7);
+            if (fan) fan.material.color.setHex(0xa855f7);
+        }
+    }
+
+    // 4. Ultrasonic Beam Pulse
+    ultrasonicBeams.forEach(b => {
+        b.material.opacity = 0.5 + Math.sin(elapsed * 8) * 0.35;
+    });
+
+    // 5. Bio-Enzyme Mist Spray Animation
+    if (sprayActive && sprayParticles) {
+        const positions = sprayGeo.attributes.position.array;
+        const velocities = sprayGeo.userData.velocities;
+        for (let i = 0; i < positions.length / 3; i++) {
+            positions[i * 3 + 1] += velocities[i * 3 + 1] * delta;
+            positions[i * 3 + 0] += velocities[i * 3 + 0] * delta;
+            positions[i * 3 + 2] += velocities[i * 3 + 2] * delta;
+
+            // Reset when touching floor
+            if (positions[i * 3 + 1] <= 0.05) {
+                positions[i * 3 + 1] = ROOM_HEIGHT - 0.2;
+                positions[i * 3 + 0] = (Math.random() - 0.5) * 5;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 3;
+            }
+        }
+        sprayGeo.attributes.position.needsUpdate = true;
+    }
+
+    // 6. Update Distance HUD
+    const camDist = camera.position.distanceTo(new THREE.Vector3(0, 0, 0));
+    const distText = document.getElementById('cam-dist-text');
+    if (distText) distText.textContent = camDist.toFixed(2) + ' m';
+
+    // 7. Render
+    renderer.render(scene, camera);
+}
+
+// --------------------------------------------
+// INTERACTIVE VIEW PRESETS
+// --------------------------------------------
+function setCameraView(preset) {
+    // Reset button styles
+    ['orbit', 'cctv', 'top', 'bins'].forEach(p => {
+        const btn = document.getElementById('btn-view-' + p);
+        if (btn) btn.className = `hud-pill px-3 py-1.5 rounded-xl text-xs font-semibold ${p === preset ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`;
+    });
+
+    controls.autoRotate = false;
+    document.getElementById('auto-rotate-chk').checked = false;
+
+    if (preset === 'orbit') {
+        animateCameraTo(8.5, 6.2, 9.5, 0, 1.2, 0);
+        controls.autoRotate = true;
+        document.getElementById('auto-rotate-chk').checked = true;
+    } else if (preset === 'cctv') {
+        // Point from CCTV camera's perspective!
+        animateCameraTo(-ROOM_WIDTH/2 + 0.6, ROOM_HEIGHT - 0.45, ROOM_DEPTH/2 - 0.6, 0, 0.4, 0);
+    } else if (preset === 'top') {
+        animateCameraTo(0, 11, 0.01, 0, 0, 0);
+    } else if (preset === 'bins') {
+        animateCameraTo(-0.8, 2.2, 2.5, -0.6, 1.0, -1.0);
+    }
+}
+
+function animateCameraTo(targetX, targetY, targetZ, lookX, lookY, lookZ) {
+    const startPos = camera.position.clone();
+    const endPos = new THREE.Vector3(targetX, targetY, targetZ);
+    const startTarget = controls.target.clone();
+    const endTarget = new THREE.Vector3(lookX, lookY, lookZ);
+
+    let progress = 0;
+    const duration = 40; // frames
+    function step() {
+        progress++;
+        const t = progress / duration;
+        const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+
+        camera.position.lerpVectors(startPos, endPos, ease);
+        controls.target.lerpVectors(startTarget, endTarget, ease);
+
+        if (progress < duration) {
+            requestAnimationFrame(step);
+        }
+    }
+    step();
+}
+
+// --------------------------------------------
+// SCAN MODES
+// --------------------------------------------
+function setScanMode(mode) {
+    currentScanMode = mode;
+    ['laser', 'uv', 'cone'].forEach(m => {
+        const btn = document.getElementById('btn-scan-' + m);
+        if (btn) btn.className = `hud-pill px-3 py-1.5 rounded-xl text-xs font-semibold ${m === mode ? 'bg-emerald-600 text-white shadow-md' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}`;
+    });
+
+    if (mode === 'laser') {
+        laserMesh.visible = true;
+        laserMesh.userData.fan.visible = true;
+        uvFloorOverlay.visible = false;
+        coneMesh.visible = false;
+    } else if (mode === 'uv') {
+        laserMesh.visible = true;
+        laserMesh.userData.fan.visible = true;
+        uvFloorOverlay.visible = true;
+        coneMesh.visible = false;
+    } else if (mode === 'cone') {
+        laserMesh.visible = false;
+        laserMesh.userData.fan.visible = false;
+        uvFloorOverlay.visible = false;
+        coneMesh.visible = true;
+    }
+}
+
+// --------------------------------------------
+// SCENARIO TRIGGERS
+// --------------------------------------------
+function triggerLitterAnomaly() {
+    litterAnomalyActive = true;
+    binTrashBag.visible = true;
+
+    // Switch to CCTV POV or close-up
+    setCameraView('bins');
+
+    // Update HUD
+    const box = document.getElementById('ai-alert-box');
+    box.className = 'hud-glass rounded-2xl p-4 border border-rose-500 bg-rose-950/40 shadow-xl alert-glow';
+    document.getElementById('ai-alert-icon').textContent = '🚨';
+    document.getElementById('ai-alert-title').className = 'text-xs font-bold text-rose-300 uppercase tracking-wide';
+    document.getElementById('ai-alert-title').textContent = 'CRITICAL: Floor Litter Detected!';
+    document.getElementById('ai-alert-desc').textContent = 'YOLOv8 Bounding Box [95.4%] at Coordinates (-0.4, 0.8). Resident ID B-12-03 flagged.';
+    document.getElementById('detected-count').innerHTML = '<span class="text-rose-400 font-bold">1 VIOLATION (Litter)</span>';
+}
+
+function triggerOverflowBin() {
+    overflowActive = true;
+    // Animate Bin 01 lid opening slightly
+    if (bin1Group && bin1Group.userData.lid) {
+        bin1Group.userData.lid.rotation.x = -0.3;
+        bin1Group.userData.lid.position.y = 1.45;
+    }
+
+    document.getElementById('bin1-pct').textContent = '94% (FULL)';
+    document.getElementById('bin1-pct').className = 'font-mono font-bold text-rose-400';
+    document.getElementById('bin1-bar').style.width = '94%';
+    document.getElementById('bin1-bar').className = 'bg-gradient-to-r from-amber-500 to-rose-500 h-full rounded-full transition-all duration-500';
+
+    const box = document.getElementById('ai-alert-box');
+    box.className = 'hud-glass rounded-2xl p-4 border border-amber-500 bg-amber-950/40 shadow-xl';
+    document.getElementById('ai-alert-icon').textContent = '🚛';
+    document.getElementById('ai-alert-title').className = 'text-xs font-bold text-amber-300 uppercase tracking-wide';
+    document.getElementById('ai-alert-title').textContent = 'IoT Trigger: Priority Cleaner Dispatch';
+    document.getElementById('ai-alert-desc').textContent = 'Ultrasonic radar depth reached threshold (Fill >= 85%). Dispatch team route auto-scheduled.';
+}
+
+function triggerEnzymeSpray() {
+    sprayActive = true;
+    sprayParticles.visible = true;
+
+    const box = document.getElementById('ai-alert-box');
+    box.className = 'hud-glass rounded-2xl p-4 border border-cyan-500 bg-cyan-950/40 shadow-xl';
+    document.getElementById('ai-alert-icon').textContent = '🧬';
+    document.getElementById('ai-alert-title').className = 'text-xs font-bold text-cyan-300 uppercase tracking-wide';
+    document.getElementById('ai-alert-title').textContent = 'Automated Bio-Enzyme Mist ACTIVE';
+    document.getElementById('ai-alert-desc').textContent = 'Deodorizing micro-mist engaged from overhead ceiling nozzles to neutralize NH3/H2S odor particles.';
+
+    setTimeout(() => {
+        sprayActive = false;
+        sprayParticles.visible = false;
+    }, 8000);
+}
+
+function resetScenario() {
+    litterAnomalyActive = false;
+    overflowActive = false;
+    sprayActive = false;
+    if (sprayParticles) sprayParticles.visible = false;
+    if (binTrashBag) binTrashBag.visible = false;
+
+    if (bin1Group && bin1Group.userData.lid) {
+        bin1Group.userData.lid.rotation.x = 0;
+        bin1Group.userData.lid.position.y = 1.38;
+    }
+
+    document.getElementById('bin1-pct').textContent = '52%';
+    document.getElementById('bin1-pct').className = 'font-mono font-bold text-emerald-400';
+    document.getElementById('bin1-bar').style.width = '52%';
+    document.getElementById('bin1-bar').className = 'bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500';
+
+    const box = document.getElementById('ai-alert-box');
+    box.className = 'hud-glass rounded-2xl p-4 border border-emerald-500/40 bg-emerald-950/20 shadow-xl';
+    document.getElementById('ai-alert-icon').textContent = '🛡';
+    document.getElementById('ai-alert-title').className = 'text-xs font-bold text-emerald-300 uppercase tracking-wide';
+    document.getElementById('ai-alert-title').textContent = 'Status: Normal Operation';
+    document.getElementById('ai-alert-desc').textContent = 'Continuous volumetric scanning active. No floor littering or spill hazard detected.';
+    document.getElementById('detected-count').textContent = '4 Bins + 1 E-Waste';
+
+    setCameraView('orbit');
+}
+
+function toggleAutoRotate(val) {
+    isAutoRotating = val;
+    controls.autoRotate = val;
+}
+
+function toggleHelpModal() {
+    const modal = document.getElementById('help-modal');
+    modal.classList.toggle('hidden');
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+// Start
+window.onload = init;
+</script>
+</body>
+</html>

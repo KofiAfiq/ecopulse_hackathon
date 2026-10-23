@@ -1,0 +1,2107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoPulse 30s 3D Animated Visualization — Hackathon Demo</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r128 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #06090F;
+            font-family: 'Inter', sans-serif;
+            color: #F8FAFC;
+        }
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        #webgl-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            display: block;
+        }
+        #hud-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2;
+            pointer-events: none;
+        }
+        .glass-panel {
+            background: rgba(11, 15, 25, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.8), 0 0 25px rgba(16, 185, 129, 0.05);
+        }
+        .glass-btn {
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .glass-btn:hover {
+            background: rgba(51, 65, 85, 0.9);
+            border-color: rgba(56, 189, 248, 0.4);
+            transform: translateY(-1px);
+        }
+        .glass-btn:active {
+            transform: translateY(1px);
+        }
+        .recording-pulse {
+            animation: recordPulse 1.2s infinite alternate;
+        }
+        @keyframes recordPulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            100% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        }
+        /* Progress timeline slider styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: #38BDF8;
+            box-shadow: 0 0 10px #38BDF8;
+            cursor: pointer;
+            margin-top: -5px;
+            transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.3);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 3D WebGL Canvas Layer -->
+    <canvas id="webgl-canvas"></canvas>
+
+    <!-- 2D HUD Canvas Layer (Bounding Boxes, Reticles, Gauges, Holograms) -->
+    <canvas id="hud-canvas"></canvas>
+
+    <!-- ===== TOP HEADER HUD OVERLAY ===== -->
+    <div id="top-header-bar" class="fixed top-4 left-4 right-4 z-20 flex flex-wrap items-center justify-between pointer-events-none gap-3 transition-opacity duration-500 opacity-0" style="opacity: 0;">
+        <!-- Brand & Context -->
+        <div class="glass-panel rounded-2xl px-5 py-2.5 flex items-center gap-3.5 pointer-events-auto border-emerald-500/20">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-base font-black shadow-lg shadow-emerald-500/30">
+                🌿
+            </div>
+            <div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-black tracking-wider uppercase text-white font-mono">EcoPulse 3D Core</span>
+                    <span class="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono tracking-wide">
+                        ● LIVE 30 FPS
+                    </span>
+                </div>
+                <p class="text-[11px] text-slate-400 font-medium">Preventive JMB Facility Twin • Sime Darby Township</p>
+            </div>
+        </div>
+
+        <!-- Scene Banner (Dynamic Monospace Telemetry) -->
+        <div id="scene-banner" class="glass-panel rounded-2xl px-5 py-2.5 flex items-center gap-3 pointer-events-auto border-cyan-500/30">
+            <div id="scene-dot" class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping"></div>
+            <div>
+                <p id="scene-title" class="text-xs font-extrabold uppercase tracking-wider text-cyan-300 font-mono">
+                    SCENE 01 / 03: LIVE AI SURVEILLANCE & SPATIAL TRACKING
+                </p>
+                <p id="scene-subtitle" class="text-[10px] text-slate-400 font-mono">
+                    YOLOv8 + DeepSORT Human Trajectory & Illegal Disposal Classification
+                </p>
+            </div>
+        </div>
+
+        <!-- Camera & AI Specs & Navigation -->
+        <div class="flex items-center gap-2 pointer-events-auto">
+            <div class="glass-panel rounded-2xl px-4 py-2.5 hidden md:flex items-center gap-4 border-slate-700">
+                <div class="text-right font-mono">
+                    <div class="text-[10px] text-slate-400">CAMERA NODE</div>
+                    <div class="text-xs font-bold text-white">CAM-04 (ISOMETRIC)</div>
+                </div>
+                <div class="h-6 w-px bg-slate-700"></div>
+                <div class="text-right font-mono">
+                    <div class="text-[10px] text-slate-400">ENGINE STATUS</div>
+                    <div class="text-xs font-bold text-emerald-400">ACTIVE (12ms)</div>
+                </div>
+            </div>
+            <a href="index.html" class="glass-panel px-3.5 py-2 rounded-xl text-xs font-bold text-slate-200 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5 shadow-lg">
+                <span>◀ Command Center</span>
+            </a>
+            <a href="digital-twin.html" class="glass-panel px-3.5 py-2 rounded-xl text-xs font-bold text-emerald-400 hover:text-white hover:bg-slate-800 transition flex items-center gap-1.5 shadow-lg">
+                <span>🌐 3D Twin</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- Toggle Clean View Floating Pill (Visible when controls hidden) -->
+    <button id="btn-unhide-ui" onclick="toggleCleanMode()" class="fixed top-4 right-4 z-50 hidden px-3.5 py-1.5 rounded-xl glass-panel text-[11px] font-bold font-mono text-cyan-300 border border-cyan-500/40 hover:bg-slate-800 transition pointer-events-auto shadow-2xl">
+        ⚙ Show Controls (C)
+    </button>
+
+    <!-- ===== FLOATING CONTROL BAR (BOTTOM) ===== -->
+    <div id="control-bar" class="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 w-[95%] max-w-4xl pointer-events-auto transition-all duration-300">
+        <div class="glass-panel rounded-2xl px-5 py-3.5 border-slate-700/80 shadow-2xl flex flex-col gap-2.5">
+            
+            <!-- Top Row: Timeline scrubber + Current Scene Indicator + Time readout -->
+            <div class="flex items-center gap-3">
+                <span id="time-display" class="text-xs font-bold font-mono text-cyan-400 w-24">00:00 / 00:30</span>
+                
+                <div class="relative flex-1 flex items-center">
+                    <input id="timeline-slider" type="range" min="0" max="30" step="0.05" value="0" class="w-full">
+                    <!-- Scene Partition Dividers -->
+                    <div class="absolute left-1/3 top-1/2 -translate-y-1/2 w-0.5 h-3 bg-slate-500/50 pointer-events-none"></div>
+                    <div class="absolute left-2/3 top-1/2 -translate-y-1/2 w-0.5 h-3 bg-slate-500/50 pointer-events-none"></div>
+                </div>
+
+                <span id="scene-badge" class="px-2.5 py-0.5 rounded-lg text-[10px] font-bold font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                    SCENE 1 (0-10s)
+                </span>
+            </div>
+
+            <!-- Bottom Row: Action Controls & Recording Trigger -->
+            <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-800">
+                
+                <!-- Left: Cinematic Launch, Play/Pause/Restart & Scene Jumps -->
+                <div class="flex items-center gap-2">
+                    <!-- Cinematic Full Intro Button -->
+                    <button onclick="launchCinematicSequence()" class="px-3.5 py-1.5 rounded-xl text-xs font-bold font-mono text-white flex items-center gap-1.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:scale-105 transition shadow-lg shadow-emerald-600/30 cursor-pointer">
+                        <span>🎬</span>
+                        <span>Play Full Intro & Demo</span>
+                    </button>
+
+                    <button id="btn-play" onclick="togglePlay()" class="glass-btn px-3 py-1.5 rounded-xl text-xs font-bold text-white flex items-center gap-1.5 hover:border-emerald-400 cursor-pointer">
+                        <span id="play-icon">▶</span>
+                        <span id="play-text">Play</span>
+                    </button>
+                    <button onclick="restartDemo()" class="glass-btn p-1.5 rounded-xl text-xs text-slate-300 hover:text-white cursor-pointer" title="Restart to 00:00 (R)">
+                        ↺
+                    </button>
+
+                    <!-- Scene Jump Pills -->
+                    <div class="hidden sm:flex items-center gap-1.5 ml-1 border-l border-slate-700/80 pl-2.5">
+                        <button onclick="jumpToScene(0)" id="pill-s1" class="glass-btn px-2 py-1 rounded-lg text-[10px] font-mono font-semibold text-cyan-300 border-cyan-500/40 cursor-pointer">
+                            1. Surveillance
+                        </button>
+                        <button onclick="jumpToScene(10)" id="pill-s2" class="glass-btn px-2 py-1 rounded-lg text-[10px] font-mono font-semibold text-slate-400 hover:text-purple-300 cursor-pointer">
+                            2. UV & Odor
+                        </button>
+                        <button onclick="jumpToScene(20)" id="pill-s3" class="glass-btn px-2 py-1 rounded-lg text-[10px] font-mono font-semibold text-slate-400 hover:text-emerald-300 cursor-pointer">
+                            3. JMB Hub
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Right: Clean View Toggle, Export & Fullscreen -->
+                <div class="flex items-center gap-2">
+                    <!-- Clean Recording View Toggle -->
+                    <button onclick="toggleCleanMode()" class="glass-btn px-3 py-1.5 rounded-xl text-xs font-semibold text-cyan-300 border-cyan-500/40 hover:text-white cursor-pointer" title="Hide UI Controls for Screen Recording (C)">
+                        👁 Clean Recording View (C)
+                    </button>
+
+                    <!-- Direct Record Video Button -->
+                    <button id="btn-record" onclick="toggleRecord()" class="px-3.5 py-1.5 rounded-xl text-xs font-bold font-mono text-white flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 transition shadow-lg shadow-red-600/30 cursor-pointer">
+                        <span id="record-dot" class="w-2 h-2 rounded-full bg-white"></span>
+                        <span id="record-label">🔴 Record Video</span>
+                    </button>
+
+                    <!-- Fullscreen Toggle -->
+                    <button onclick="toggleFullscreen()" class="glass-btn px-2.5 py-1.5 rounded-xl text-xs text-slate-300 hover:text-white cursor-pointer" title="Toggle Fullscreen">
+                        ⛶
+                    </button>
+
+                    <!-- Back to Hub -->
+                    <a href="index.html" class="glass-btn px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white flex items-center gap-1 cursor-pointer" title="Back to Command Center">
+                        <span>◀ Hub</span>
+                    </a>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Recording status notification toast -->
+    <div id="record-toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-40 hidden px-5 py-2.5 rounded-2xl glass-panel border-red-500/60 bg-red-950/80 shadow-2xl flex items-center gap-3">
+        <span class="w-3 h-3 rounded-full bg-red-500 recording-pulse"></span>
+        <span id="record-toast-text" class="text-xs font-mono font-bold text-red-200">
+            RECORDING DEMO VIDEO IN PROGRESS (00:00 / 00:30)...
+        </span>
+    </div>
+
+    <!-- ===== AUDIO: SYNCHRONIZED AI VOICEOVER ===== -->
+    <audio id="voiceover-audio" src="intro_voiceover.mp3" preload="auto"></audio>
+
+    <!-- ===== PRE-RECORDING LAUNCHER MODAL ===== -->
+    <div id="record-prep-modal" class="fixed inset-0 z-50 flex flex-col items-center justify-center text-center p-6 bg-gradient-to-b from-[#0B132B]/95 via-[#06090F]/98 to-[#06090F] transition-opacity duration-500 backdrop-blur-2xl">
+        <div class="max-w-xl flex flex-col items-center">
+            
+            <!-- Hackathon Pill Badge -->
+            <div class="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-extrabold tracking-widest uppercase mb-6 shadow-lg shadow-emerald-500/10">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                SIME DARBY PROPERTY • UNIVERSITY HACKATHON 2026
+            </div>
+
+            <!-- Title -->
+            <h2 class="text-3xl sm:text-4xl md:text-5xl font-black text-white tracking-tight mb-3 bg-gradient-to-r from-white via-cyan-200 to-emerald-400 bg-clip-text text-transparent">
+                EcoPulse 3D Presentation
+            </h2>
+
+            <!-- Clean Buffer Explanation -->
+            <p class="text-xs sm:text-sm text-slate-300 mb-6 leading-relaxed max-w-lg">
+                Clicking start will fade this button into <strong class="text-cyan-300">pure black for 2 seconds</strong>. This gives you a clean buffer to start your screen recorder (<kbd class="px-1.5 py-0.5 rounded bg-slate-800 text-xs font-mono text-white border border-slate-700">Win+G</kbd> / OBS / Win+Shift+R) before the pristine cinematic title card &amp; AI voiceover begin.
+            </p>
+
+            <!-- Main Start Button -->
+            <button id="btn-start-record-sequence" onclick="startCleanRecordingFlow()" class="w-full sm:w-auto px-8 py-4 rounded-2xl text-sm sm:text-base font-extrabold font-mono text-white bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:scale-105 active:scale-95 transition-all shadow-2xl shadow-emerald-500/40 flex items-center justify-center gap-3 cursor-pointer mb-4">
+                <span class="text-xl">🎬</span>
+                <span>Start Recording Sequence (with Voiceover)</span>
+            </button>
+
+            <!-- Secondary Options -->
+            <div class="flex items-center gap-4 text-xs font-mono text-slate-400">
+                <button onclick="dismissPrepToInteractive()" class="hover:text-white transition underline cursor-pointer">
+                    ⚙ Skip to Interactive 3D Model
+                </button>
+                <span>•</span>
+                <button onclick="testVoiceoverAudio()" class="hover:text-cyan-300 transition underline cursor-pointer">
+                    🔊 Test Voiceover Audio
+                </button>
+            </div>
+
+            <p class="text-[11px] text-slate-500 mt-6 font-mono">
+                💡 Tip: Once the screen fades to black, trigger your screen recording tool. The title card and voiceover will start automatically.
+            </p>
+        </div>
+    </div>
+
+    <!-- ===== FULLSCREEN BLACKOUT CURTAIN BUFFER ===== -->
+    <div id="black-buffer-curtain" class="fixed inset-0 z-45 bg-[#06090F] transition-opacity duration-700 pointer-events-none opacity-0"></div>
+
+    <!-- ===== CINEMATIC OPENING TITLE CARD OVERLAY (100% CLEAN - NO BUTTONS) ===== -->
+    <div id="cinematic-intro-card" class="fixed inset-0 z-50 flex flex-col items-center justify-center text-center p-6 bg-gradient-to-b from-[#0B132B]/95 via-[#06090F]/98 to-[#06090F] transition-all duration-1000 backdrop-blur-2xl opacity-0 pointer-events-none" style="display: none;">
+        <div class="max-w-3xl w-full mx-auto flex flex-col items-center justify-center text-center">
+            
+            <!-- Hackathon Pill Badge -->
+            <div class="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-xs font-extrabold tracking-widest uppercase mb-6 shadow-lg shadow-emerald-500/10 mx-auto">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+                SIME DARBY PROPERTY • UNIVERSITY HACKATHON 2026
+            </div>
+
+            <!-- Main Title with Glowing Gradient -->
+            <h1 class="text-6xl sm:text-7xl md:text-8xl font-black tracking-tight mb-4 bg-gradient-to-r from-white via-cyan-200 to-emerald-400 bg-clip-text text-transparent drop-shadow-[0_0_45px_rgba(56,189,248,0.35)] text-center">
+                EcoPulse
+            </h1>
+
+            <!-- Project Tagline -->
+            <p class="text-lg sm:text-xl md:text-2xl font-bold text-slate-100 tracking-wide mb-4 max-w-2xl leading-snug text-center mx-auto">
+                Autonomous AI Waste Facility Twin &amp; Spatial CCTV Surveillance
+            </p>
+
+            <!-- 3 Core Philosophy Pillars -->
+            <div class="flex flex-wrap items-center justify-center gap-2 sm:gap-4 text-xs font-semibold font-mono text-cyan-300 uppercase tracking-wider mb-4 mx-auto">
+                <span class="px-3.5 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700">🛡 Zero Resident Policing</span>
+                <span class="px-3.5 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700">🔍 Root-Cause Resolution</span>
+                <span class="px-3.5 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700">🔬 Smart Bio-Sensing</span>
+            </div>
+
+            <!-- Township Context -->
+            <div class="text-xs text-slate-400 font-mono tracking-widest uppercase text-center mx-auto">
+                Facility Digital Twin • City of Elmina &amp; Bandar Bukit Raja
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== LIVE AI VOICEOVER SYNCHRONIZED CAPTION BAR ===== -->
+    <div id="cinematic-caption-bar" class="fixed bottom-7 left-1/2 -translate-x-1/2 z-40 max-w-3xl w-[92%] text-center pointer-events-none transition-all duration-300 opacity-0 transform translate-y-2">
+        <div class="inline-flex items-center gap-3 px-6 py-2.5 rounded-2xl bg-black/80 backdrop-blur-xl border border-cyan-500/30 shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse flex-shrink-0"></span>
+            <p id="cinematic-caption-text" class="text-xs sm:text-sm font-semibold text-slate-100 tracking-wide font-sans leading-relaxed">
+            </p>
+        </div>
+    </div>
+
+    <!-- ===== CINEMATIC OUTRO BUMPER OVERLAY ===== -->
+    <div id="cinematic-outro-card" class="fixed inset-0 z-50 flex flex-col items-center justify-center text-center p-6 bg-gradient-to-b from-[#0B132B]/95 via-[#06090F]/98 to-[#06090F] transition-all duration-1000 backdrop-blur-2xl opacity-0 pointer-events-none" style="display: none;">
+        <div class="max-w-2xl w-full mx-auto flex flex-col items-center justify-center text-center">
+            <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-3xl font-black shadow-2xl shadow-emerald-500/40 mb-5 mx-auto">
+                🌿
+            </div>
+            <h2 class="text-4xl sm:text-5xl font-black tracking-tight mb-3 bg-gradient-to-r from-white via-emerald-200 to-teal-400 bg-clip-text text-transparent text-center">
+                EcoPulse Core
+            </h2>
+            <p class="text-base sm:text-lg font-semibold text-slate-300 mb-6 leading-relaxed text-center mx-auto">
+                Transforming Residential Waste Facilities into Sustainable, Restorative Digital Ecosystems
+            </p>
+            <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 font-mono text-xs font-bold tracking-widest uppercase mb-8 mx-auto">
+                SIME DARBY PROPERTY • HACKATHON 2026
+            </div>
+            <div id="outro-actions" class="flex items-center justify-center gap-3 transition-opacity duration-500 opacity-0 pointer-events-none mx-auto">
+                <button onclick="startCleanRecordingFlow()" class="px-6 py-2.5 rounded-xl text-xs font-bold font-mono text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:scale-105 transition shadow-lg shadow-emerald-600/30 cursor-pointer">
+                    ↺ Replay Sequence
+                </button>
+                <button onclick="dismissPrepToInteractive()" class="glass-btn px-5 py-2.5 rounded-xl text-xs font-bold text-slate-300 hover:text-white cursor-pointer">
+                    ⚙ Show Controls
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- JAVASCRIPT: THREE.JS + CANVAS HUD + RECORDER -->
+    <!-- ========================================== -->
+    <script>
+        // --- Global State ---
+        let currentTime = 0;
+        const totalDuration = 30.0;
+        let isPlaying = false; // Starts paused on the cinematic title card
+        let isRecording = false;
+        let isCinematicSequence = false;
+        let isCleanUIMode = false;
+        let lastFrameTime = performance.now();
+
+        // Voiceover Audio & Cinematic State
+        let voiceAudio = null;
+        let introCardDissolving = false;
+        let outroTriggered = false;
+
+        const narrationCaptions = [
+            { start: 0.80, end: 9.44, text: "Introducing EcoPulse: an autonomous AI waste facility digital twin and CCTV surveillance system for Sime Darby townships." },
+            { start: 11.84, end: 23.58, text: "Here in camera 4, a resident enters along a tracked trajectory and dumps waste on the floor. YOLOv8 immediately classifies an illegal disposal with zero bin overlap." },
+            { start: 26.38, end: 36.84, text: "Smart UV fluorescence mode detects surface leachate and ammonia hotspots, immediately activating automated overhead bio-enzyme mist sprays to neutralize the air." },
+            { start: 39.64, end: 51.64, text: "The incident generates an automated contractor cleaning task—saving 42 percent labor time—while broadcasting an educational hygiene notice to lift lobby screens without penalizing residents." },
+            { start: 54.44, end: 59.86, text: "EcoPulse: Restorative facility management for cleaner, sustainable townships." }
+        ];
+
+        function updateCaptions(aTime) {
+            const captionBar = document.getElementById('cinematic-caption-bar');
+            const captionText = document.getElementById('cinematic-caption-text');
+            if (!captionBar || !captionText) return;
+
+            const match = narrationCaptions.find(c => aTime >= c.start && aTime <= c.end);
+            if (match) {
+                captionText.textContent = match.text;
+                captionBar.classList.remove('opacity-0', 'translate-y-2');
+                captionBar.classList.add('opacity-100', 'translate-y-0');
+            } else {
+                captionBar.classList.remove('opacity-100', 'translate-y-0');
+                captionBar.classList.add('opacity-0', 'translate-y-2');
+            }
+        }
+
+        // Canvas & Context References
+        const webglCanvas = document.getElementById('webgl-canvas');
+        const hudCanvas = document.getElementById('hud-canvas');
+        const hudCtx = hudCanvas.getContext('2d');
+
+        // Offscreen recording composite canvas
+        const recordCanvas = document.createElement('canvas');
+        const recordCtx = recordCanvas.getContext('2d');
+        let mediaRecorder = null;
+        let recordedChunks = [];
+
+        // Three.js References
+        let scene, camera, renderer;
+        let ambientLight, sunLight, uvBlacklight, cctvSpotlight;
+        let cctvCameraMesh, cctvConeMesh;
+        let dumpsterGeneral, dumpsterRecycle, dumpsterEwaste;
+        let trashBagMesh, petWasteMesh, petLitterTray;
+        let characterGroup, charHead, charTorso, charLeftArm, charRightArm, charLeftLeg, charRightLeg;
+        let floorGrid, trajectoryLine, mistParticles, uvRingsGroup;
+
+        // Resize Handling
+        function resize() {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+            const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+            renderer.setSize(w, h);
+            renderer.setPixelRatio(dpr);
+
+            hudCanvas.width = w * dpr;
+            hudCanvas.height = h * dpr;
+            hudCanvas.style.width = w + 'px';
+            hudCanvas.style.height = h + 'px';
+            hudCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+            recordCanvas.width = 1920;
+            recordCanvas.height = 1080;
+
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        }
+
+        // --- Init Three.js 3D Environment ---
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x06090F);
+            scene.fog = new THREE.FogExp2(0x06090F, 0.025);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+            camera.position.set(13, 11, 15);
+            camera.lookAt(0, 1.2, 0);
+
+            renderer = new THREE.WebGLRenderer({
+                canvas: webglCanvas,
+                antialias: true,
+                alpha: false,
+                preserveDrawingBuffer: true
+            });
+
+            // Lighting Setup
+            ambientLight = new THREE.AmbientLight(0x2a374a, 1.2);
+            scene.add(ambientLight);
+
+            sunLight = new THREE.DirectionalLight(0xe2e8f0, 1.5);
+            sunLight.position.set(10, 15, 8);
+            scene.add(sunLight);
+
+            // UV Blacklight (deep violet spotlight for Scene 2)
+            uvBlacklight = new THREE.SpotLight(0xa855f7, 0, 20, Math.PI / 3, 0.5, 1);
+            uvBlacklight.position.set(0, 8, 2);
+            uvBlacklight.target.position.set(0, 0, 1.5);
+            scene.add(uvBlacklight);
+            scene.add(uvBlacklight.target);
+
+            // Build Room Environment
+            buildWasteRoom();
+
+            // Build Character & Props
+            buildCharacter();
+            buildWasteObjects();
+            buildCCTVSystem();
+            buildUVRings();
+            buildMistingParticleSystem();
+
+            // Resize listener
+            window.addEventListener('resize', resize);
+            resize();
+        }
+
+        // --- Build Waste Room (Rumah Sampah) ---
+        function buildWasteRoom() {
+            // Main Floor
+            const floorGeo = new THREE.PlaneGeometry(20, 16);
+            const floorMat = new THREE.MeshStandardMaterial({
+                color: 0x0F172A,
+                roughness: 0.6,
+                metalness: 0.3
+            });
+            const floor = new THREE.Mesh(floorGeo, floorMat);
+            floor.rotation.x = -Math.PI / 2;
+            scene.add(floor);
+
+            // Floor Grid Overlay
+            floorGrid = new THREE.GridHelper(20, 20, 0x1E293B, 0x162032);
+            floorGrid.position.y = 0.01;
+            scene.add(floorGrid);
+
+            // Walls (Dark Industrial Concrete Panels)
+            const wallMat = new THREE.MeshStandardMaterial({
+                color: 0x111827,
+                roughness: 0.85
+            });
+
+            // Back Wall
+            const backWallGeo = new THREE.BoxGeometry(20, 7, 0.4);
+            const backWall = new THREE.Mesh(backWallGeo, wallMat);
+            backWall.position.set(0, 3.5, -7.8);
+            scene.add(backWall);
+
+            // Left Wall
+            const leftWallGeo = new THREE.BoxGeometry(0.4, 7, 16);
+            const leftWall = new THREE.Mesh(leftWallGeo, wallMat);
+            leftWall.position.set(-9.8, 3.5, 0);
+            scene.add(leftWall);
+
+            // Wall hazard safety stripes along baseboards
+            const stripeGeo = new THREE.BoxGeometry(20, 0.35, 0.05);
+            const stripeMat = new THREE.MeshBasicMaterial({ color: 0xF59E0B });
+            const baseStripe = new THREE.Mesh(stripeGeo, stripeMat);
+            baseStripe.position.set(0, 0.2, -7.58);
+            scene.add(baseStripe);
+
+            // Overhead Ceiling Beams
+            for (let z = -5; z <= 5; z += 5) {
+                const beamGeo = new THREE.BoxGeometry(20, 0.4, 0.4);
+                const beamMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, metalness: 0.7 });
+                const beam = new THREE.Mesh(beamGeo, beamMat);
+                beam.position.set(0, 6.8, z);
+                scene.add(beam);
+            }
+
+            // Dumpsters Creation
+            buildDumpsters();
+        }
+
+        // --- Build Realistic Dumpsters ---
+        function buildDumpsters() {
+            // Helper to make a dumpster with wheels and rim
+            function createDumpster(colorHex, labelText, fillPercent, isAlert) {
+                const group = new THREE.Group();
+
+                // Body
+                const bodyGeo = new THREE.BoxGeometry(2.4, 1.8, 1.6);
+                const bodyMat = new THREE.MeshStandardMaterial({
+                    color: colorHex,
+                    roughness: 0.4,
+                    metalness: 0.2
+                });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.position.y = 1.1;
+                group.add(body);
+
+                // Lid
+                const lidGeo = new THREE.BoxGeometry(2.5, 0.2, 1.7);
+                const lidMat = new THREE.MeshStandardMaterial({ color: 0x1E293B, roughness: 0.5 });
+                const lid = new THREE.Mesh(lidGeo, lidMat);
+                lid.position.y = 2.05;
+                group.add(lid);
+
+                // Wheels (4 corner cylinders)
+                const wheelMat = new THREE.MeshStandardMaterial({ color: 0x0F172A });
+                const wheelPositions = [
+                    [-1.0, 0.2, -0.6], [1.0, 0.2, -0.6],
+                    [-1.0, 0.2, 0.6],  [1.0, 0.2, 0.6]
+                ];
+                wheelPositions.forEach(pos => {
+                    const wheelGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.15, 12);
+                    const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                    wheel.rotation.z = Math.PI / 2;
+                    wheel.position.set(pos[0], pos[1], pos[2]);
+                    group.add(wheel);
+                });
+
+                // LED Status Strip across front
+                const ledGeo = new THREE.BoxGeometry(1.8, 0.08, 0.05);
+                const ledMat = new THREE.MeshBasicMaterial({
+                    color: isAlert ? 0xEF4444 : 0x10B981
+                });
+                const ledStrip = new THREE.Mesh(ledGeo, ledMat);
+                ledStrip.position.set(0, 1.6, 0.83);
+                group.add(ledStrip);
+
+                return group;
+            }
+
+            // 1. Bin A: General Household Waste (95% FULL -> Overflowing / Red Strip)
+            dumpsterGeneral = createDumpster(0x334155, "GENERAL WASTE", 95, true);
+            dumpsterGeneral.position.set(-4.5, 0, -3.5);
+            scene.add(dumpsterGeneral);
+
+            // 2. Bin B: Recyclables (35% AVAILABLE -> Green Strip)
+            dumpsterRecycle = createDumpster(0x1D4ED8, "RECYCLABLE", 35, false);
+            dumpsterRecycle.position.set(-1.5, 0, -3.5);
+            scene.add(dumpsterRecycle);
+
+            // 3. Bin C: E-Waste & Small Electronics Locker (Teal Locker)
+            const ewasteGroup = new THREE.Group();
+            const lockerGeo = new THREE.BoxGeometry(2.0, 2.4, 1.2);
+            const lockerMat = new THREE.MeshStandardMaterial({ color: 0x0F766E, metalness: 0.5, roughness: 0.3 });
+            const locker = new THREE.Mesh(lockerGeo, lockerMat);
+            locker.position.y = 1.2;
+            ewasteGroup.add(locker);
+
+            const lockerSlotGeo = new THREE.BoxGeometry(1.4, 0.3, 0.1);
+            const lockerSlotMat = new THREE.MeshBasicMaterial({ color: 0x2DD4BF });
+            const slot = new THREE.Mesh(lockerSlotGeo, lockerSlotMat);
+            slot.position.set(0, 1.6, 0.61);
+            ewasteGroup.add(slot);
+
+            dumpsterEwaste = ewasteGroup;
+            dumpsterEwaste.position.set(2.0, 0, -3.7);
+            scene.add(dumpsterEwaste);
+        }
+
+        // --- Build Overhead CCTV Camera & Volumetric Cone ---
+        function buildCCTVSystem() {
+            const camGroup = new THREE.Group();
+            camGroup.position.set(-6, 6.2, -4);
+
+            // Base bracket
+            const bracketGeo = new THREE.BoxGeometry(0.3, 0.3, 0.8);
+            const bracketMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.8 });
+            const bracket = new THREE.Mesh(bracketGeo, bracketMat);
+            camGroup.add(bracket);
+
+            // Dome / Cylinder Body
+            const bodyGeo = new THREE.CylinderGeometry(0.25, 0.35, 0.7, 16);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xE2E8F0, metalness: 0.3 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.rotation.x = Math.PI / 3;
+            body.position.set(0, -0.2, 0.3);
+            camGroup.add(body);
+
+            // Blinking REC LED
+            const ledGeo = new THREE.SphereGeometry(0.06, 8, 8);
+            const ledMat = new THREE.MeshBasicMaterial({ color: 0xEF4444 });
+            const led = new THREE.Mesh(ledGeo, ledMat);
+            led.position.set(0.18, -0.15, 0.55);
+            camGroup.add(led);
+
+            cctvCameraMesh = camGroup;
+            scene.add(cctvCameraMesh);
+
+            // Volumetric Scanning Vision Cone
+            const coneGeo = new THREE.ConeGeometry(4.5, 7.5, 24, 1, true);
+            const coneMat = new THREE.MeshBasicMaterial({
+                color: 0x06B6D4,
+                transparent: true,
+                opacity: 0.14,
+                side: THREE.DoubleSide,
+                depthWrite: false
+            });
+            cctvConeMesh = new THREE.Mesh(coneGeo, coneMat);
+            cctvConeMesh.position.set(-3.5, 2.5, -0.5);
+            cctvConeMesh.rotation.x = -Math.PI / 5;
+            cctvConeMesh.rotation.z = Math.PI / 10;
+            scene.add(cctvConeMesh);
+        }
+
+        // --- Build Stylized 3D Human Character ---
+        function buildCharacter() {
+            characterGroup = new THREE.Group();
+
+            const matBody = new THREE.MeshStandardMaterial({
+                color: 0x1E293B,
+                metalness: 0.2,
+                roughness: 0.5
+            });
+            const matGlow = new THREE.MeshBasicMaterial({ color: 0x38BDF8 }); // Cyber visor / joint glow
+
+            // Torso
+            const torsoGeo = new THREE.BoxGeometry(0.65, 0.9, 0.4);
+            charTorso = new THREE.Mesh(torsoGeo, matBody);
+            charTorso.position.y = 1.35;
+            characterGroup.add(charTorso);
+
+            // Head & Visor
+            const headGeo = new THREE.SphereGeometry(0.24, 16, 16);
+            charHead = new THREE.Mesh(headGeo, matBody);
+            charHead.position.y = 2.05;
+            characterGroup.add(charHead);
+
+            const visorGeo = new THREE.BoxGeometry(0.28, 0.1, 0.15);
+            const visor = new THREE.Mesh(visorGeo, matGlow);
+            visor.position.set(0, 2.06, 0.18);
+            characterGroup.add(visor);
+
+            // Left Arm
+            charLeftArm = new THREE.Group();
+            charLeftArm.position.set(-0.45, 1.7, 0);
+            const armLGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.75, 8);
+            const armL = new THREE.Mesh(armLGeo, matBody);
+            armL.position.y = -0.35;
+            charLeftArm.add(armL);
+            characterGroup.add(charLeftArm);
+
+            // Right Arm
+            charRightArm = new THREE.Group();
+            charRightArm.position.set(0.45, 1.7, 0);
+            const armRGeo = new THREE.CylinderGeometry(0.09, 0.08, 0.75, 8);
+            const armR = new THREE.Mesh(armRGeo, matBody);
+            armR.position.y = -0.35;
+            charRightArm.add(armR);
+            characterGroup.add(charRightArm);
+
+            // Left Leg
+            charLeftLeg = new THREE.Group();
+            charLeftLeg.position.set(-0.2, 0.9, 0);
+            const legLGeo = new THREE.CylinderGeometry(0.1, 0.08, 0.9, 8);
+            const legL = new THREE.Mesh(legLGeo, matBody);
+            legL.position.y = -0.45;
+            charLeftLeg.add(legL);
+            characterGroup.add(charLeftLeg);
+
+            // Right Leg
+            charRightLeg = new THREE.Group();
+            charRightLeg.position.set(0.2, 0.9, 0);
+            const legRGeo = new THREE.CylinderGeometry(0.1, 0.08, 0.9, 8);
+            const legR = new THREE.Mesh(legRGeo, matBody);
+            legR.position.y = -0.45;
+            charRightLeg.add(legR);
+            characterGroup.add(charRightLeg);
+
+            // Initial character placement
+            characterGroup.position.set(7, 0, 4);
+            scene.add(characterGroup);
+
+            // Dotted Trajectory Line geometry & glowing floor markers
+            const trajectoryPoints = [
+                new THREE.Vector3(7.0, 0.04, 4.0),
+                new THREE.Vector3(5.2, 0.04, 3.4),
+                new THREE.Vector3(3.6, 0.04, 2.8),
+                new THREE.Vector3(2.0, 0.04, 2.2),
+                new THREE.Vector3(0.4, 0.04, 1.6),
+                new THREE.Vector3(1.8, 0.04, 0.5),
+                new THREE.Vector3(3.5, 0.04, -0.8),
+                new THREE.Vector3(5.2, 0.04, -2.1),
+                new THREE.Vector3(7.0, 0.04, -3.5)
+            ];
+            const lineGeo = new THREE.BufferGeometry().setFromPoints(trajectoryPoints);
+            const lineMat = new THREE.LineDashedMaterial({
+                color: 0x38BDF8,
+                dashSize: 0.35,
+                gapSize: 0.2,
+                linewidth: 3
+            });
+            trajectoryLine = new THREE.Line(lineGeo, lineMat);
+            trajectoryLine.computeLineDistances();
+            scene.add(trajectoryLine);
+
+            // Glowing footprint waypoint dots along trajectory
+            const dotMat = new THREE.MeshBasicMaterial({ color: 0x38BDF8 });
+            trajectoryPoints.forEach((pt, idx) => {
+                const dotGeo = new THREE.CircleGeometry(0.12, 16);
+                const dotMesh = new THREE.Mesh(dotGeo, dotMat);
+                dotMesh.rotation.x = -Math.PI / 2;
+                dotMesh.position.set(pt.x, 0.03, pt.z);
+                scene.add(dotMesh);
+            });
+        }
+
+        // --- Build Waste Objects (Trash Bag & Pet Waste) ---
+        function buildWasteObjects() {
+            // 1. Dropped Trash Bag (Glossy Black Deformed Polyhedron)
+            const bagGeo = new THREE.DodecahedronGeometry(0.38, 1);
+            // Deform vertices for realistic wrinkled garbage bag look
+            const pos = bagGeo.attributes.position;
+            for (let i = 0; i < pos.count; i++) {
+                const vx = pos.getX(i);
+                const vy = pos.getY(i);
+                const vz = pos.getZ(i);
+                pos.setY(i, vy * 0.85 + Math.sin(vx * 6) * 0.05);
+            }
+            bagGeo.computeVertexNormals();
+
+            const bagMat = new THREE.MeshStandardMaterial({
+                color: 0x090D16,
+                roughness: 0.2,
+                metalness: 0.6
+            });
+            trashBagMesh = new THREE.Mesh(bagGeo, bagMat);
+            // Dropped position outside bin
+            trashBagMesh.position.set(-0.6, 0.32, 0.8);
+            scene.add(trashBagMesh);
+
+            // Tie knot on top of bag
+            const knotGeo = new THREE.ConeGeometry(0.09, 0.18, 6);
+            const knotMat = new THREE.MeshBasicMaterial({ color: 0xF59E0B }); // Yellow cinch tie
+            const knot = new THREE.Mesh(knotGeo, knotMat);
+            knot.position.y = 0.35;
+            trashBagMesh.add(knot);
+
+            // 2. Pet Waste Box & Fecal Cluster
+            const petGroup = new THREE.Group();
+            
+            // Litter Tray base
+            const trayGeo = new THREE.BoxGeometry(0.7, 0.12, 0.55);
+            const trayMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.7 });
+            const tray = new THREE.Mesh(trayGeo, trayMat);
+            tray.position.y = 0.06;
+            petGroup.add(tray);
+
+            // Cat Litter / Bio Waste inside
+            const wasteGeo = new THREE.SphereGeometry(0.14, 8, 8);
+            const wasteMat = new THREE.MeshStandardMaterial({ color: 0x854D0E, roughness: 0.9 });
+            const cluster = new THREE.Mesh(wasteGeo, wasteMat);
+            cluster.position.set(0.05, 0.14, 0.02);
+            petGroup.add(cluster);
+
+            petWasteMesh = petGroup;
+            petWasteMesh.position.set(1.5, 0, 1.2);
+            scene.add(petWasteMesh);
+        }
+
+        // --- Build UV Fluorescence Hotspots (Scene 2) ---
+        function buildUVRings() {
+            uvRingsGroup = new THREE.Group();
+
+            // Ring 1 (under Trash Bag) - Leachate Fluorescence (Green/Teal)
+            const ring1Geo = new THREE.RingGeometry(0.2, 1.4, 32);
+            const ring1Mat = new THREE.MeshBasicMaterial({
+                color: 0x22C55E,
+                transparent: true,
+                opacity: 0,
+                side: THREE.DoubleSide
+            });
+            const ring1 = new THREE.Mesh(ring1Geo, ring1Mat);
+            ring1.rotation.x = -Math.PI / 2;
+            ring1.position.set(-0.6, 0.02, 0.8);
+            uvRingsGroup.add(ring1);
+
+            // Ring 2 (under Pet Waste) - Ammonia / Bio-Fluorescence (Magenta/Purple)
+            const ring2Geo = new THREE.RingGeometry(0.2, 1.2, 32);
+            const ring2Mat = new THREE.MeshBasicMaterial({
+                color: 0xEC4899,
+                transparent: true,
+                opacity: 0,
+                side: THREE.DoubleSide
+            });
+            const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+            ring2.rotation.x = -Math.PI / 2;
+            ring2.position.set(1.5, 0.02, 1.2);
+            uvRingsGroup.add(ring2);
+
+            scene.add(uvRingsGroup);
+        }
+
+        // --- Build Automated Cyan Bio-Enzyme Mist Nozzle Particle Cloud ---
+        function buildMistingParticleSystem() {
+            const particleCount = 1200;
+            const geom = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const velocities = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount; i++) {
+                // Spawn near 2 ceiling nozzles: nozzle 1 (-1, 6.5, 1) and nozzle 2 (1.5, 6.5, 1)
+                const nozzleX = Math.random() > 0.5 ? -1.0 : 1.5;
+                positions[i * 3 + 0] = nozzleX + (Math.random() - 0.5) * 0.8;
+                positions[i * 3 + 1] = 6.2 - Math.random() * 5.8; // vertical spread
+                positions[i * 3 + 2] = 1.0 + (Math.random() - 0.5) * 2.0;
+
+                velocities[i * 3 + 0] = (Math.random() - 0.5) * 0.03;
+                velocities[i * 3 + 1] = -0.04 - Math.random() * 0.04; // downward spray
+                velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.03;
+            }
+
+            geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+            const mat = new THREE.PointsMaterial({
+                color: 0x22D3EE, // Cyan bio-enzyme mist
+                size: 0.12,
+                transparent: true,
+                opacity: 0, // activated in Scene 2
+                blending: THREE.AdditiveBlending,
+                depthWrite: false
+            });
+
+            mistParticles = new THREE.Points(geom, mat);
+            mistParticles.userData = { velocities };
+            scene.add(mistParticles);
+        }
+
+        // --- Update 3D Positions & Keyframe Timeline ---
+        function updateTimeline(t) {
+            // 1. CCTV Camera Conical Scan Motion
+            if (cctvConeMesh) {
+                cctvConeMesh.rotation.y = Math.sin(t * 1.5) * 0.25;
+            }
+
+            // ==========================================
+            // SCENE 1 (0:00 - 10:00): LIVE AI SURVEILLANCE
+            // ==========================================
+            if (t < 10.0) {
+                // Camera Isometric High View
+                const norm = t / 10.0;
+                camera.position.x = 13.0 - norm * 1.5;
+                camera.position.y = 11.0 - norm * 0.5;
+                camera.position.z = 15.0 - norm * 1.0;
+                camera.lookAt(0, 1.2, 0);
+
+                // Normal Daylight / Ambient
+                ambientLight.color.setHex(0x2a374a);
+                ambientLight.intensity = 1.2;
+                sunLight.intensity = 1.5;
+                uvBlacklight.intensity = 0;
+
+                // Character Walking Progression
+                // Phase 1 (0s - 3.5s): Walk towards dumpsters
+                if (t < 3.5) {
+                    const walkProgress = t / 3.5;
+                    const charX = 7.0 + (0.4 - 7.0) * walkProgress;
+                    const charZ = 4.0 + (1.6 - 4.0) * walkProgress;
+                    characterGroup.position.set(charX, 0, charZ);
+                    characterGroup.rotation.y = Math.atan2(1.6 - 4.0, 0.4 - 7.0) + Math.PI / 2;
+
+                    // Leg & arm walk swing
+                    const swing = Math.sin(t * 9.0) * 0.5;
+                    charLeftLeg.rotation.x = swing;
+                    charRightLeg.rotation.x = -swing;
+                    charLeftArm.rotation.x = -swing;
+                    charRightArm.rotation.x = swing;
+
+                    // Holding trash in hands
+                    trashBagMesh.position.set(charX - 0.4, 1.1, charZ + 0.3);
+                    petWasteMesh.position.set(charX + 0.4, 0.8, charZ + 0.2);
+                } 
+                // Phase 2 (3.5s - 5.0s): Dropping trash on floor
+                else if (t < 5.0) {
+                    characterGroup.position.set(0.4, 0, 1.6);
+                    characterGroup.rotation.y = -Math.PI / 4;
+                    charLeftLeg.rotation.x = 0;
+                    charRightLeg.rotation.x = 0;
+                    charLeftArm.rotation.x = 0.3;
+                    charRightArm.rotation.x = 0.3;
+
+                    // Fall to ground
+                    const fallProgress = Math.min(1.0, (t - 3.5) / 0.8);
+                    trashBagMesh.position.set(-0.6, 1.1 + (0.32 - 1.1) * fallProgress, 0.8);
+                    petWasteMesh.position.set(1.5, 0.8 + (0.0 - 0.8) * fallProgress, 1.2);
+                } 
+                // Phase 3 (5.0s - 9.5s): Character turns and walks away
+                else if (t < 9.5) {
+                    const walkAwayProgress = (t - 5.0) / 4.5;
+                    const charX = 0.4 + (7.0 - 0.4) * walkAwayProgress;
+                    const charZ = 1.6 + (-3.5 - 1.6) * walkAwayProgress;
+                    characterGroup.position.set(charX, 0, charZ);
+                    characterGroup.rotation.y = Math.atan2(-3.5 - 1.6, 7.0 - 0.4) + Math.PI / 2;
+
+                    const swing = Math.sin((t - 5.0) * 9.0) * 0.5;
+                    charLeftLeg.rotation.x = swing;
+                    charRightLeg.rotation.x = -swing;
+                    charLeftArm.rotation.x = -swing;
+                    charRightArm.rotation.x = swing;
+
+                    // Dropped waste stays firmly on ground
+                    trashBagMesh.position.set(-0.6, 0.32, 0.8);
+                    petWasteMesh.position.set(1.5, 0.0, 1.2);
+                } else {
+                    // Character has exited frame
+                    characterGroup.position.set(12, 0, -4);
+                }
+
+                // UV Rings & Mist Hidden in Scene 1
+                uvRingsGroup.children.forEach(r => r.material.opacity = 0);
+                mistParticles.material.opacity = 0;
+            }
+
+            // ==========================================
+            // SCENE 2 (10:00 - 20:00): AIR QUALITY & SMART UV HEATMAP
+            // ==========================================
+            else if (t < 20.0) {
+                const s2Time = t - 10.0; // 0 to 10s within Scene 2
+                const norm2 = s2Time / 10.0;
+
+                // Cinematic Camera Zoom down towards floor waste & dumpsters
+                // From (11.5, 10.5, 14.0) smoothly interpolating to dramatic low angle (3.2, 3.0, 4.5)
+                const camEase = Math.min(1.0, s2Time / 3.5);
+                camera.position.x = THREE.MathUtils.lerp(11.5, 3.2, camEase);
+                camera.position.y = THREE.MathUtils.lerp(10.5, 2.8, camEase);
+                camera.position.z = THREE.MathUtils.lerp(14.0, 4.6, camEase);
+                camera.lookAt(0.3, 0.5, 1.0);
+
+                // Lighting Transition: Deep Purple / Violet UV Fluorescence Mode
+                ambientLight.color.setHex(0x3B0764); // Violet ambient
+                ambientLight.intensity = 0.5;
+                sunLight.intensity = 0.15; // Darken sunlight
+                uvBlacklight.intensity = 3.5; // Intense blacklight spotlight
+
+                // Waste objects on floor
+                trashBagMesh.position.set(-0.6, 0.32, 0.8);
+                petWasteMesh.position.set(1.5, 0.0, 1.2);
+
+                // Pulsating UV Hotspot Rings on Floor
+                const pulse = Math.sin(t * 6.0) * 0.15 + 0.85;
+                uvRingsGroup.children[0].material.opacity = Math.min(0.85, s2Time * 0.5) * pulse;
+                uvRingsGroup.children[1].material.opacity = Math.min(0.85, s2Time * 0.5) * pulse;
+
+                // Overhead Bio-Enzyme Mist Spray (Starts at 13.5s -> s2Time = 3.5s)
+                if (s2Time > 3.5) {
+                    mistParticles.material.opacity = Math.min(0.75, (s2Time - 3.5) * 0.5);
+
+                    // Animate falling mist particles
+                    const pos = mistParticles.geometry.attributes.position.array;
+                    const vels = mistParticles.userData.velocities;
+                    for (let i = 0; i < pos.length / 3; i++) {
+                        pos[i * 3 + 0] += vels[i * 3 + 0];
+                        pos[i * 3 + 1] += vels[i * 3 + 1];
+                        pos[i * 3 + 2] += vels[i * 3 + 2];
+
+                        // Reset when hitting floor
+                        if (pos[i * 3 + 1] < 0.1) {
+                            const nozzleX = Math.random() > 0.5 ? -1.0 : 1.5;
+                            pos[i * 3 + 0] = nozzleX + (Math.random() - 0.5) * 0.8;
+                            pos[i * 3 + 1] = 6.2;
+                            pos[i * 3 + 2] = 1.0 + (Math.random() - 0.5) * 1.5;
+                        }
+                    }
+                    mistParticles.geometry.attributes.position.needsUpdate = true;
+                } else {
+                    mistParticles.material.opacity = 0;
+                }
+            }
+
+            // ==========================================
+            // SCENE 3 (20:00 - 30:00): STAFF DISPATCH & COMMUNITY MEMO HUB
+            // ==========================================
+            else {
+                const s3Time = t - 20.0; // 0 to 10s within Scene 3
+                const camEase3 = Math.min(1.0, s3Time / 3.0);
+
+                // Camera pulls back to elevated overview command angle
+                camera.position.x = THREE.MathUtils.lerp(3.2, 0.0, camEase3);
+                camera.position.y = THREE.MathUtils.lerp(2.8, 8.5, camEase3);
+                camera.position.z = THREE.MathUtils.lerp(4.6, 14.5, camEase3);
+                camera.lookAt(0, 1.5, 0);
+
+                // Lighting: Ambient command center cyber-glow
+                ambientLight.color.setHex(0x1E293B);
+                ambientLight.intensity = 1.0;
+                sunLight.intensity = 0.8;
+                uvBlacklight.intensity = 0.8;
+
+                // Hotspots settled into cleaned state (soft green glow)
+                uvRingsGroup.children[0].material.color.setHex(0x10B981);
+                uvRingsGroup.children[0].material.opacity = 0.35;
+                uvRingsGroup.children[1].material.color.setHex(0x10B981);
+                uvRingsGroup.children[1].material.opacity = 0.35;
+
+                // Mist dissipated
+                mistParticles.material.opacity = 0.1;
+            }
+        }
+
+        // --- Helper: Convert 3D Object Coordinates to 2D Screen Space ---
+        function getScreenCoordinates(obj3D) {
+            const vector = new THREE.Vector3();
+            obj3D.getWorldPosition(vector);
+            vector.project(camera);
+
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+
+            return {
+                x: (vector.x * 0.5 + 0.5) * w,
+                y: (-(vector.y * 0.5) + 0.5) * h,
+                visible: vector.z < 1.0
+            };
+        }
+
+        // --- Draw 2D HUD Overlays on Canvas ---
+        function drawHUD(t) {
+            const w = window.innerWidth;
+            const h = window.innerHeight;
+
+            hudCtx.clearRect(0, 0, w, h);
+
+            // ==========================================
+            // SCENE 1 HUD (0:00 - 10:00): YOLO + SVM BOUNDING BOXES
+            // ==========================================
+            if (t < 10.0) {
+                // 1. Blue Bounding Box for Person
+                if (characterGroup && characterGroup.position.x < 9.0) {
+                    const charPos = getScreenCoordinates(charTorso);
+                    if (charPos.visible) {
+                        const boxW = Math.max(70, 1100 / camera.position.distanceTo(characterGroup.position));
+                        const boxH = boxW * 2.1;
+                        const boxX = charPos.x - boxW / 2;
+                        const boxY = charPos.y - boxH * 0.45;
+
+                        drawBoundingBox(boxX, boxY, boxW, boxH, '#38BDF8', [
+                            '[Person Tracked | Trajectory Logged]',
+                            'ID: #TRK-841 • Conf: 96.4%',
+                            'Path: Corridor B-12 ➔ Waste Rm'
+                        ]);
+                    }
+                }
+
+                // 2. Red Bounding Box for Trash Bag (after drop at t >= 3.5s)
+                if (t >= 3.5 && trashBagMesh) {
+                    const bagPos = getScreenCoordinates(trashBagMesh);
+                    if (bagPos.visible) {
+                        const boxW = 120;
+                        const boxH = 90;
+                        const boxX = bagPos.x - boxW / 2;
+                        const boxY = bagPos.y - boxH / 2;
+
+                        drawBoundingBox(boxX, boxY, boxW, boxH, '#EF4444', [
+                            '🚨 [Illegal Floor Dumping - Overlap: 0%]',
+                            'Class: Mixed Household Bag',
+                            'IoU with Dumpster Bins: 0.00'
+                        ], true);
+                    }
+                }
+
+                // 3. Orange Bounding Box for Pet Waste (after drop at t >= 3.5s)
+                if (t >= 3.5 && petWasteMesh) {
+                    const petPos = getScreenCoordinates(petWasteMesh);
+                    if (petPos.visible) {
+                        const boxW = 130;
+                        const boxH = 75;
+                        const boxX = petPos.x - boxW / 2;
+                        const boxY = petPos.y - boxH / 2;
+
+                        drawBoundingBox(boxX, boxY, boxW, boxH, '#F97316', [
+                            '⚠️ [Bio-Waste Detected]',
+                            'Class: Pet Litter / Organic',
+                            'Odor / Hazmat Alert'
+                        ]);
+                    }
+                }
+
+                // Bins Status Overlay in Scene 1
+                const bin1Pos = getScreenCoordinates(dumpsterGeneral);
+                if (bin1Pos.visible) {
+                    drawTag(bin1Pos.x - 70, bin1Pos.y - 80, 'BIN 1: 95% FULL (OVERFLOW)', '#EF4444');
+                }
+                const bin2Pos = getScreenCoordinates(dumpsterRecycle);
+                if (bin2Pos.visible) {
+                    drawTag(bin2Pos.x - 70, bin2Pos.y - 80, 'BIN 2: 35% CAP (LED GUIDE ON)', '#10B981');
+                }
+            }
+
+            // ==========================================
+            // SCENE 2 HUD (10:00 - 20:00): UV HEATMAP & RADIAL ODOR GAUGE
+            // ==========================================
+            else if (t < 20.0) {
+                const s2Time = t - 10.0;
+
+                // UV Mode Watermark (Top Center)
+                hudCtx.save();
+                hudCtx.font = 'bold 12px "JetBrains Mono"';
+                hudCtx.fillStyle = '#A855F7';
+                hudCtx.textAlign = 'center';
+                hudCtx.fillText('🔬 SMART UV-A FLUORESCENCE ACTIVE (λ = 365nm) • LEACHATE HEATMAP', w / 2, 85);
+                hudCtx.restore();
+
+                // Telemetry pointers on contamination spots
+                const bagPos = getScreenCoordinates(trashBagMesh);
+                if (bagPos.visible) {
+                    drawReticle(bagPos.x, bagPos.y, '#22C55E', 'UV LEACHATE HOTSPOT: Organic Fecal & Acid Traces');
+                }
+
+                const petPos = getScreenCoordinates(petWasteMesh);
+                if (petPos.visible) {
+                    drawReticle(petPos.x, petPos.y, '#EC4899', 'BIO-ORGANIC HAZARD: Ammonia NH₃ Outgassing');
+                }
+
+                // Overhead Misting Status (when s2Time > 3.5s)
+                if (s2Time > 3.5) {
+                    drawTag(w / 2 - 160, 110, '💧 AUTOMATED BIO-ENZYME MIST NOZZLES: ACTIVE (85 PSI)', '#06B6D4');
+                }
+
+                // --- Sleek Real-Time Radial Gauge (Right Side HUD) ---
+                // Odor Dilution-to-Threshold (D/T) calculation:
+                // Spikes to 30 D/T at 10-14s, then drops to 4 D/T by 20s
+                let dtVal;
+                let gaugeStatus, gaugeColor;
+
+                if (s2Time < 4.0) {
+                    // Spiking up to 30 D/T
+                    dtVal = Math.round(8 + (30 - 8) * (s2Time / 4.0));
+                    gaugeStatus = 'CRITICAL ODOR SPIKE';
+                    gaugeColor = '#EF4444';
+                } else {
+                    // Neutralizing down to 4 D/T
+                    const neutralizeProgress = (s2Time - 4.0) / 6.0;
+                    dtVal = Math.round(30 - (30 - 4) * Math.min(1.0, neutralizeProgress));
+                    if (dtVal > 15) {
+                        gaugeStatus = 'NEUTRALIZING AIR...';
+                        gaugeColor = '#F59E0B';
+                    } else {
+                        gaugeStatus = 'FRESH • NEUTRALIZED';
+                        gaugeColor = '#10B981';
+                    }
+                }
+
+                drawRadialGauge(w - 180, h / 2 - 30, dtVal, gaugeStatus, gaugeColor);
+            }
+
+            // ==========================================
+            // SCENE 3 HUD (20:00 - 30:00): DISPATCH & COMMUNITY MEMO HUB
+            // ==========================================
+            else {
+                const s3Time = t - 20.0;
+                const panelFade = Math.min(1.0, s3Time / 1.5);
+
+                hudCtx.save();
+                hudCtx.globalAlpha = panelFade;
+
+                // Split Screen Command Dashboard Layout
+                const panelW = Math.min(460, w * 0.42);
+                const panelH = 340;
+                const panelY = h / 2 - 170;
+
+                // Left Panel: Staff Dispatch & Labor Efficiency
+                drawDispatchPanel(50, panelY, panelW, panelH, s3Time);
+
+                // Right Panel: Restorative Community Memo (No Police/Card Blocking)
+                drawCommunityMemoPanel(w - panelW - 50, panelY, panelW, panelH, s3Time);
+
+                hudCtx.restore();
+            }
+        }
+
+        // --- Helper: Draw YOLO High-Contrast Bounding Box ---
+        function drawBoundingBox(x, y, w, h, color, labels, pulse = false) {
+            hudCtx.save();
+            hudCtx.strokeStyle = color;
+            hudCtx.lineWidth = 2;
+
+            if (pulse) {
+                hudCtx.shadowColor = color;
+                hudCtx.shadowBlur = 15;
+            }
+
+            // Draw Corner Brackets
+            const corner = 14;
+            // Top-Left
+            hudCtx.beginPath();
+            hudCtx.moveTo(x, y + corner);
+            hudCtx.lineTo(x, y);
+            hudCtx.lineTo(x + corner, y);
+            hudCtx.stroke();
+
+            // Top-Right
+            hudCtx.beginPath();
+            hudCtx.moveTo(x + w - corner, y);
+            hudCtx.lineTo(x + w, y);
+            hudCtx.lineTo(x + w, y + corner);
+            hudCtx.stroke();
+
+            // Bottom-Left
+            hudCtx.beginPath();
+            hudCtx.moveTo(x, y + h - corner);
+            hudCtx.lineTo(x, y + h);
+            hudCtx.lineTo(x + corner, y + h);
+            hudCtx.stroke();
+
+            // Bottom-Right
+            hudCtx.beginPath();
+            hudCtx.moveTo(x + w - corner, y + h);
+            hudCtx.lineTo(x + w, y + h);
+            hudCtx.lineTo(x + w, y + h - corner);
+            hudCtx.stroke();
+
+            // Subtle border outline
+            hudCtx.strokeStyle = color + '44';
+            hudCtx.strokeRect(x, y, w, h);
+
+            // Bounding Box Header Label Card
+            const labelH = labels.length * 14 + 10;
+            hudCtx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            hudCtx.fillRect(x, y - labelH - 4, w + 20, labelH);
+            hudCtx.strokeStyle = color;
+            hudCtx.strokeRect(x, y - labelH - 4, w + 20, labelH);
+
+            hudCtx.font = 'bold 10px "JetBrains Mono"';
+            hudCtx.fillStyle = color;
+            labels.forEach((lbl, idx) => {
+                hudCtx.fillText(lbl, x + 6, y - labelH + 11 + idx * 14);
+            });
+
+            hudCtx.restore();
+        }
+
+        // --- Helper: Draw Status Tag ---
+        function drawTag(x, y, text, color) {
+            hudCtx.save();
+            hudCtx.font = 'bold 10px "JetBrains Mono"';
+            const textWidth = hudCtx.measureText(text).width;
+            hudCtx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+            hudCtx.fillRect(x, y, textWidth + 16, 22);
+            hudCtx.strokeStyle = color;
+            hudCtx.lineWidth = 1.5;
+            hudCtx.strokeRect(x, y, textWidth + 16, 22);
+            hudCtx.fillStyle = color;
+            hudCtx.fillText(text, x + 8, y + 15);
+            hudCtx.restore();
+        }
+
+        // --- Helper: Draw Targeting Reticle ---
+        function drawReticle(x, y, color, label) {
+            hudCtx.save();
+            hudCtx.strokeStyle = color;
+            hudCtx.lineWidth = 1.5;
+
+            hudCtx.beginPath();
+            hudCtx.arc(x, y, 16, 0, Math.PI * 2);
+            hudCtx.stroke();
+
+            hudCtx.beginPath();
+            hudCtx.moveTo(x - 22, y);
+            hudCtx.lineTo(x + 22, y);
+            hudCtx.moveTo(x, y - 22);
+            hudCtx.lineTo(x, y + 22);
+            hudCtx.stroke();
+
+            // Leader line to label
+            hudCtx.beginPath();
+            hudCtx.moveTo(x + 16, y - 16);
+            hudCtx.lineTo(x + 50, y - 40);
+            hudCtx.lineTo(x + 160, y - 40);
+            hudCtx.stroke();
+
+            hudCtx.font = 'bold 9px "JetBrains Mono"';
+            hudCtx.fillStyle = color;
+            hudCtx.fillText(label, x + 55, y - 46);
+
+            hudCtx.restore();
+        }
+
+        // --- Helper: Draw Radial Odor Gauge ---
+        function drawRadialGauge(cx, cy, dtVal, statusText, color) {
+            hudCtx.save();
+
+            // Background Card
+            hudCtx.fillStyle = 'rgba(11, 15, 25, 0.88)';
+            hudCtx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+            hudCtx.lineWidth = 1;
+            roundRect(hudCtx, cx - 110, cy - 120, 220, 240, 20, true, true);
+
+            // Title
+            hudCtx.font = 'bold 11px "JetBrains Mono"';
+            hudCtx.fillStyle = '#94A3B8';
+            hudCtx.textAlign = 'center';
+            hudCtx.fillText('ODOR LEVEL (D/T SENSOR)', cx, cy - 90);
+
+            // Arc Gauge
+            const radius = 60;
+            const startAngle = Math.PI * 0.75;
+            const endAngle = Math.PI * 2.25;
+            const totalAngle = endAngle - startAngle;
+
+            // Background Track
+            hudCtx.beginPath();
+            hudCtx.arc(cx, cy - 10, radius, startAngle, endAngle);
+            hudCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            hudCtx.lineWidth = 10;
+            hudCtx.lineCap = 'round';
+            hudCtx.stroke();
+
+            // Active Colored Arc (Normalized 0 to 35 D/T)
+            const fillRatio = Math.min(1.0, Math.max(0.05, dtVal / 35.0));
+            hudCtx.beginPath();
+            hudCtx.arc(cx, cy - 10, radius, startAngle, startAngle + totalAngle * fillRatio);
+            hudCtx.strokeStyle = color;
+            hudCtx.lineWidth = 10;
+            hudCtx.lineCap = 'round';
+            hudCtx.shadowColor = color;
+            hudCtx.shadowBlur = 12;
+            hudCtx.stroke();
+            hudCtx.shadowBlur = 0;
+
+            // Big Central Numeric Readout
+            hudCtx.font = 'bold 28px "JetBrains Mono"';
+            hudCtx.fillStyle = '#FFFFFF';
+            hudCtx.fillText(dtVal + ' D/T', cx, cy - 5);
+
+            // Status Badge
+            hudCtx.font = 'bold 11px "JetBrains Mono"';
+            hudCtx.fillStyle = color;
+            hudCtx.fillText(statusText, cx, cy + 28);
+
+            // Sub-metrics
+            hudCtx.font = '9px "JetBrains Mono"';
+            hudCtx.fillStyle = '#64748B';
+            hudCtx.fillText('AMMONIA NH₃: ' + (dtVal > 15 ? '16.4 ppm [HIGH]' : '0.4 ppm [CLEAR]'), cx, cy + 65);
+            hudCtx.fillText('H₂S LEVEL: ' + (dtVal > 15 ? '0.82 ppm [CRITICAL]' : '0.01 ppm [SAFE]'), cx, cy + 82);
+
+            hudCtx.restore();
+        }
+
+        // --- Helper: Draw Panel A (Staff Dispatch & Efficiency) ---
+        function drawDispatchPanel(x, y, w, h, s3Time) {
+            hudCtx.save();
+
+            // Panel Glass Background
+            hudCtx.fillStyle = 'rgba(11, 15, 25, 0.9)';
+            hudCtx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+            hudCtx.lineWidth = 1.5;
+            roundRect(hudCtx, x, y, w, h, 20, true, true);
+
+            // Header
+            hudCtx.font = 'bold 12px "JetBrains Mono"';
+            hudCtx.fillStyle = '#38BDF8';
+            hudCtx.fillText('📋 JMB DISPATCH & FACILITY ROOT CAUSE', x + 20, y + 32);
+
+            // Task Dispatch Card
+            hudCtx.fillStyle = 'rgba(30, 41, 59, 0.7)';
+            hudCtx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+            roundRect(hudCtx, x + 20, y + 48, w - 40, 110, 14, true, true);
+
+            hudCtx.font = 'bold 11px "Inter"';
+            hudCtx.fillStyle = '#F8FAFC';
+            hudCtx.fillText('Task #104: Sanitize UV Hotspot & Clear Floor Bag', x + 35, y + 74);
+
+            hudCtx.font = '10px "JetBrains Mono"';
+            hudCtx.fillStyle = '#EF4444';
+            hudCtx.fillText('● DISPATCH STATUS: CLEANER EN ROUTE', x + 35, y + 96);
+
+            hudCtx.fillStyle = '#94A3B8';
+            hudCtx.fillText('Assigned Staff: Ahmad Razif (Zone B Fixed-Contract)', x + 35, y + 115);
+            hudCtx.fillText('Target Coordinates: Blk B Ground Floor Waste Room', x + 35, y + 133);
+
+            // Efficiency Highlight Box
+            hudCtx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+            hudCtx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
+            roundRect(hudCtx, x + 20, y + 172, w - 40, 75, 14, true, true);
+
+            hudCtx.font = 'bold 24px "JetBrains Mono"';
+            hudCtx.fillStyle = '#10B981';
+            hudCtx.fillText('+42% LABOR TIME SAVED', x + 35, y + 208);
+
+            hudCtx.font = '10px "Inter"';
+            hudCtx.fillStyle = '#A7F3D0';
+            hudCtx.fillText('AI on-demand dispatch eliminates unproductive routine patrolling.', x + 35, y + 230);
+
+            // Preventive Root-Cause Remediation
+            hudCtx.font = 'bold 10px "JetBrains Mono"';
+            hudCtx.fillStyle = '#F59E0B';
+            hudCtx.fillText('🔍 ROOT-CAUSE DIAGNOSIS: GENERAL BIN #1 AT 95% FULL', x + 20, y + 275);
+            hudCtx.fillStyle = '#94A3B8';
+            hudCtx.font = '10px "Inter"';
+            hudCtx.fillText('JMB Action: Capacity dynamically reallocated to Bin #2.', x + 20, y + 295);
+            hudCtx.fillText('No punitive action against resident. Facility corrected.', x + 20, y + 312);
+
+            hudCtx.restore();
+        }
+
+        // --- Helper: Draw Panel B (Restorative Community Memo & Incident Replay) ---
+        function drawCommunityMemoPanel(x, y, w, h, s3Time) {
+            hudCtx.save();
+
+            // Panel Glass Background
+            hudCtx.fillStyle = 'rgba(11, 15, 25, 0.9)';
+            hudCtx.strokeStyle = 'rgba(16, 185, 129, 0.35)';
+            hudCtx.lineWidth = 1.5;
+            roundRect(hudCtx, x, y, w, h, 20, true, true);
+
+            // Header
+            hudCtx.font = 'bold 12px "JetBrains Mono"';
+            hudCtx.fillStyle = '#10B981';
+            hudCtx.fillText('📢 COMMUNITY RESTORATIVE NOTICE (NO POLICING)', x + 20, y + 32);
+
+            // Sub-pill
+            hudCtx.font = 'bold 9px "JetBrains Mono"';
+            hudCtx.fillStyle = '#34D399';
+            hudCtx.fillText('ZERO ACCESS-CARD BLOCKING • COMMUNITY HYGIENE ACCOUNTABILITY', x + 20, y + 48);
+
+            // Mini CCTV Clip Replay Screen
+            const clipW = w - 40;
+            const clipH = 120;
+            hudCtx.fillStyle = '#06090F';
+            hudCtx.strokeStyle = '#334155';
+            roundRect(hudCtx, x + 20, y + 60, clipW, clipH, 12, true, true);
+
+            // CCTV wireframe simulation inside clip screen
+            hudCtx.strokeStyle = '#38BDF855';
+            hudCtx.strokeRect(x + 35, y + 75, clipW - 30, clipH - 30);
+
+            // Animated scanline across clip
+            const scanY = ((s3Time * 45) % (clipH - 32));
+            hudCtx.fillStyle = 'rgba(56, 189, 248, 0.15)';
+            hudCtx.fillRect(x + 35, y + 75 + scanY, clipW - 30, 2);
+
+            hudCtx.font = 'bold 10px "JetBrains Mono"';
+            hudCtx.fillStyle = '#EF4444';
+            hudCtx.fillText('● REC REPLAY — CAM-04 (14:22:18)', x + 40, y + 92);
+            hudCtx.fillStyle = '#94A3B8';
+            hudCtx.fillText('Offender: Walked in from Corridor B-12', x + 40, y + 109);
+            hudCtx.fillText('Event: Dropped mixed waste outside Bin #1', x + 40, y + 124);
+            hudCtx.fillStyle = '#38BDF8';
+            hudCtx.fillText('Classification: Overlap 0% [Floor Violation]', x + 40, y + 139);
+
+            // Mini bounding box on right side of replay clip
+            const miniBoxX = x + clipW - 65;
+            const miniBoxY = y + 84;
+            hudCtx.strokeStyle = '#EF4444';
+            hudCtx.lineWidth = 1.5;
+            hudCtx.strokeRect(miniBoxX, miniBoxY, 48, 48);
+            hudCtx.fillStyle = '#EF4444';
+            hudCtx.font = 'bold 8px "JetBrains Mono"';
+            hudCtx.fillText('[Floor Bag]', miniBoxX + 2, miniBoxY - 3);
+
+            // Community Memo Broadcast Box
+            hudCtx.fillStyle = 'rgba(30, 41, 59, 0.6)';
+            hudCtx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+            roundRect(hudCtx, x + 20, y + 195, w - 40, 85, 12, true, true);
+
+            hudCtx.font = 'bold 10px "JetBrains Mono"';
+            hudCtx.fillStyle = '#38BDF8';
+            hudCtx.fillText('BROADCAST CHANNELS: RESIDENT APP & LIFT LOBBY SCREENS', x + 35, y + 215);
+
+            hudCtx.font = '10px "Inter"';
+            hudCtx.fillStyle = '#E2E8F0';
+            hudCtx.fillText('"Hygiene Advisory: Floor disposal logged at Block B Waste Rm.', x + 35, y + 235);
+            hudCtx.fillText('Please note Bin #2 has 35% space available. Keep township clean!"', x + 35, y + 252);
+
+            // Township Score
+            hudCtx.font = 'bold 11px "JetBrains Mono"';
+            hudCtx.fillStyle = '#10B981';
+            hudCtx.fillText('TOWNSHIP CLEANLINESS COMPLIANCE SCORE: 98.4%', x + 20, y + 310);
+
+            hudCtx.restore();
+        }
+
+        // --- Helper: Canvas Rounded Rectangle ---
+        function roundRect(ctx, x, y, width, height, radius, fill, stroke) {
+            ctx.beginPath();
+            ctx.moveTo(x + radius, y);
+            ctx.lineTo(x + width - radius, y);
+            ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+            ctx.lineTo(x + width, y + height - radius);
+            ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+            ctx.lineTo(x + radius, y + height);
+            ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+            ctx.lineTo(x, y + radius);
+            ctx.quadraticCurveTo(x, y, x + radius, y);
+            ctx.closePath();
+            if (fill) ctx.fill();
+            if (stroke) ctx.stroke();
+        }
+
+        // --- Main Animation Loop ---
+        function animate(now) {
+            requestAnimationFrame(animate);
+
+            const dt = (now - lastFrameTime) / 1000.0;
+            lastFrameTime = now;
+
+            if (isCinematicSequence && voiceAudio) {
+                const aTime = voiceAudio.currentTime;
+
+                // Sync live captions with voiceover timing
+                updateCaptions(aTime);
+
+                const introCard = document.getElementById('cinematic-intro-card');
+                const topHeader = document.getElementById('top-header-bar');
+
+                if (aTime < 9.8) {
+                    // Displaying title card (Voiceover speaks 0.80s - 9.44s)
+                    currentTime = 0;
+                    isPlaying = false;
+                    if (topHeader) topHeader.style.opacity = '0';
+                } else if (aTime < 10.8) {
+                    // Dissolve title card smoothly into 3D scene (9.8s - 10.8s)
+                    currentTime = 0;
+                    isPlaying = false;
+                    if (!introCardDissolving && introCard) {
+                        introCardDissolving = true;
+                        introCard.style.transition = 'opacity 0.8s ease-out, transform 0.8s ease-out';
+                        introCard.style.opacity = '0';
+                        introCard.style.transform = 'scale(1.04)';
+                    }
+                } else if (aTime < 25.0) {
+                    // Scene 1: 3D human trajectory & floor drop (0s - 10s in 3D)
+                    // Voiceover speaks 11.84s - 23.58s, followed by calm buffer
+                    if (introCard && introCard.style.display !== 'none') {
+                        introCard.style.display = 'none';
+                    }
+                    if (topHeader && topHeader.style.opacity !== '1') {
+                        topHeader.style.transition = 'opacity 0.5s ease-in';
+                        topHeader.style.opacity = '1';
+                    }
+                    currentTime = Math.min(9.99, ((aTime - 10.8) / 14.2) * 10.0);
+                    isPlaying = true;
+                    introCardDissolving = false;
+                } else if (aTime < 38.0) {
+                    // Scene 2: Smart UV Fluorescence & Bio-Enzyme Mist (10s - 20s in 3D)
+                    // Voiceover speaks 26.38s - 36.84s, followed by calm buffer
+                    currentTime = 10.0 + Math.min(9.99, ((aTime - 25.0) / 13.0) * 10.0);
+                    isPlaying = true;
+                } else if (aTime < 53.0) {
+                    // Scene 3: Staff Dispatch & Community Memo Hub (20s - 30s in 3D)
+                    // Voiceover speaks 39.64s - 51.64s, followed by calm buffer
+                    currentTime = 20.0 + Math.min(10.0, ((aTime - 38.0) / 15.0) * 10.0);
+                    isPlaying = true;
+                } else {
+                    // Outro Card! (53.0s - 60.0s)
+                    // Voiceover speaks 54.44s - 59.86s
+                    currentTime = 30.0;
+                    isPlaying = false;
+                    if (topHeader && topHeader.style.opacity !== '0') {
+                        topHeader.style.transition = 'opacity 0.5s ease-out';
+                        topHeader.style.opacity = '0';
+                    }
+                    if (!outroTriggered) {
+                        outroTriggered = true;
+                        showCinematicOutro();
+                    }
+                }
+
+                // Reveal outro actions when voiceover is finished
+                if (voiceAudio.ended || aTime >= 59.5) {
+                    const outroActions = document.getElementById('outro-actions');
+                    if (outroActions) {
+                        outroActions.classList.remove('opacity-0', 'pointer-events-none');
+                        outroActions.style.opacity = '1';
+                        outroActions.style.pointerEvents = 'auto';
+                    }
+                }
+
+                updateTimelineSliderUI();
+            } else if (isPlaying) {
+                currentTime += dt;
+                if (currentTime >= totalDuration) {
+                    currentTime = totalDuration;
+                    isPlaying = false;
+                    updatePlayUI();
+                    if (isRecording) {
+                        stopRecording();
+                    }
+                }
+                updateTimelineSliderUI();
+            }
+
+            // Sync 3D Scene and 2D HUD
+            updateTimeline(currentTime);
+            renderer.render(scene, camera);
+            drawHUD(currentTime);
+            updateSceneBannerUI(currentTime);
+
+            // Composite Frame for Video Recording
+            if (isRecording) {
+                recordCtx.clearRect(0, 0, recordCanvas.width, recordCanvas.height);
+                recordCtx.drawImage(webglCanvas, 0, 0, recordCanvas.width, recordCanvas.height);
+                recordCtx.drawImage(hudCanvas, 0, 0, recordCanvas.width, recordCanvas.height);
+            }
+        }
+
+        // --- UI Updates ---
+        function updateTimelineSliderUI() {
+            const slider = document.getElementById('timeline-slider');
+            const timeDisp = document.getElementById('time-display');
+            const sceneBadge = document.getElementById('scene-badge');
+
+            if (isCinematicSequence && voiceAudio) {
+                const aTime = voiceAudio.currentTime;
+                const curSec = Math.floor(aTime);
+                const curMilli = Math.floor((aTime % 1) * 10);
+                timeDisp.textContent = `00:${curSec < 10 ? '0' : ''}${curSec}.${curMilli} / 01:00`;
+                slider.value = Math.min(30, (aTime / 60.0) * 30.0);
+            } else {
+                slider.value = currentTime;
+                const curSec = Math.floor(currentTime);
+                const curMilli = Math.floor((currentTime % 1) * 10);
+                timeDisp.textContent = `00:${curSec < 10 ? '0' : ''}${curSec}.${curMilli} / 00:30`;
+            }
+
+            if (currentTime < 10.0) {
+                sceneBadge.textContent = 'SCENE 1 (0-10s)';
+                sceneBadge.className = 'px-2.5 py-0.5 rounded-lg text-[10px] font-bold font-mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/30';
+                highlightPill('pill-s1');
+            } else if (currentTime < 20.0) {
+                sceneBadge.textContent = 'SCENE 2 (10-20s)';
+                sceneBadge.className = 'px-2.5 py-0.5 rounded-lg text-[10px] font-bold font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30';
+                highlightPill('pill-s2');
+            } else {
+                sceneBadge.textContent = 'SCENE 3 (20-30s)';
+                sceneBadge.className = 'px-2.5 py-0.5 rounded-lg text-[10px] font-bold font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+                highlightPill('pill-s3');
+            }
+        }
+
+        function highlightPill(activeId) {
+            ['pill-s1', 'pill-s2', 'pill-s3'].forEach(id => {
+                const el = document.getElementById(id);
+                if (id === activeId) {
+                    el.classList.add('border-cyan-400', 'text-white');
+                    el.classList.remove('text-slate-400');
+                } else {
+                    el.classList.remove('border-cyan-400', 'text-white');
+                    el.classList.add('text-slate-400');
+                }
+            });
+        }
+
+        function updateSceneBannerUI(t) {
+            const titleEl = document.getElementById('scene-title');
+            const subEl = document.getElementById('scene-subtitle');
+            const dotEl = document.getElementById('scene-dot');
+
+            if (t < 10.0) {
+                titleEl.textContent = 'SCENE 01 / 03: LIVE AI SURVEILLANCE & SPATIAL TRACKING';
+                titleEl.className = 'text-xs font-extrabold uppercase tracking-wider text-cyan-300 font-mono';
+                subEl.textContent = 'YOLOv8 + DeepSORT Human Trajectory & Illegal Disposal Classification';
+                dotEl.className = 'w-2.5 h-2.5 rounded-full bg-cyan-400 animate-ping';
+            } else if (t < 20.0) {
+                titleEl.textContent = 'SCENE 02 / 03: BIO-SENSING & SMART UV / MIST NEUTRALIZATION';
+                titleEl.className = 'text-xs font-extrabold uppercase tracking-wider text-purple-300 font-mono';
+                subEl.textContent = 'Fluorescence Leachate Detection & Automated Aerosol Enzyme Neutralizer';
+                dotEl.className = 'w-2.5 h-2.5 rounded-full bg-purple-400 animate-ping';
+            } else {
+                titleEl.textContent = 'SCENE 03 / 03: AUTONOMOUS DISPATCH & COMMUNITY RESTORATIVE MEMO';
+                titleEl.className = 'text-xs font-extrabold uppercase tracking-wider text-emerald-300 font-mono';
+                subEl.textContent = 'Automated JMB Staff Dispatch • Non-Punitive Lift Lobby Educational Broadcast';
+                dotEl.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping';
+            }
+        }
+
+        // --- Controls Handlers ---
+        function togglePlay() {
+            if (currentTime >= totalDuration) {
+                currentTime = 0;
+            }
+            isPlaying = !isPlaying;
+            updatePlayUI();
+        }
+
+        function updatePlayUI() {
+            const icon = document.getElementById('play-icon');
+            const text = document.getElementById('play-text');
+            if (isPlaying) {
+                icon.textContent = '⏸';
+                text.textContent = 'Pause Demo';
+            } else {
+                icon.textContent = '▶';
+                text.textContent = 'Play 30s Auto-Demo';
+            }
+        }
+
+        function restartDemo() {
+            currentTime = 0;
+            isPlaying = true;
+            updatePlayUI();
+        }
+
+        function jumpToScene(targetSec) {
+            currentTime = targetSec;
+            isPlaying = true;
+            updatePlayUI();
+        }
+
+        // Slider Scrubbing
+        document.getElementById('timeline-slider').addEventListener('input', (e) => {
+            currentTime = parseFloat(e.target.value);
+            updateTimeline(currentTime);
+            updateTimelineSliderUI();
+        });
+
+        // --- Video Recording (MediaRecorder API) ---
+        function toggleRecord() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+
+        function startRecording() {
+            recordedChunks = [];
+            currentTime = 0;
+            isPlaying = true;
+            isRecording = true;
+            updatePlayUI();
+
+            const toast = document.getElementById('record-toast');
+            toast.classList.remove('hidden');
+
+            const btn = document.getElementById('btn-record');
+            btn.className = 'px-4 py-1.5 rounded-xl text-xs font-bold font-mono text-white flex items-center gap-2 bg-red-600 recording-pulse';
+            document.getElementById('record-label').textContent = '⏹ Stop & Export Video';
+
+            // Capture stream at 30 FPS
+            const stream = recordCanvas.captureStream(30);
+
+            let mimeType = 'video/webm;codecs=vp9';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'video/webm;codecs=vp8';
+            }
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'video/webm';
+            }
+
+            try {
+                mediaRecorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 6000000 });
+            } catch (err) {
+                mediaRecorder = new MediaRecorder(stream);
+            }
+
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                    recordedChunks.push(e.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `EcoPulse_30s_Hackathon_Demo_${Date.now()}.webm`;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                }, 200);
+
+                isRecording = false;
+                toast.classList.add('hidden');
+                btn.className = 'px-4 py-1.5 rounded-xl text-xs font-bold font-mono text-white flex items-center gap-2 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 transition shadow-lg shadow-red-600/30';
+                document.getElementById('record-label').textContent = '🔴 Record & Download Video';
+            };
+
+            mediaRecorder.start(200); // 200ms slice
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+        }
+
+        function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+            }
+        }
+
+        // --- Cinematic Intro & Presentation Engine ---
+        function startCleanRecordingFlow() {
+            if (!voiceAudio) voiceAudio = document.getElementById('voiceover-audio');
+            if (voiceAudio) {
+                voiceAudio.pause();
+                voiceAudio.currentTime = 0;
+            }
+            introCardDissolving = false;
+            outroTriggered = false;
+
+            // 1. Hide interactive controls for pure screen recording view
+            const ctrlBar = document.getElementById('control-bar');
+            if (ctrlBar) ctrlBar.classList.add('hidden');
+            const unhideBtn = document.getElementById('btn-unhide-ui');
+            if (unhideBtn) unhideBtn.classList.add('hidden');
+
+            // Hide top header bar during title intro
+            const topHeader = document.getElementById('top-header-bar');
+            if (topHeader) topHeader.style.opacity = '0';
+
+            // Hide outro if open
+            const outro = document.getElementById('cinematic-outro-card');
+            if (outro) {
+                outro.style.display = 'none';
+                outro.classList.add('opacity-0', 'pointer-events-none');
+            }
+            const outroActions = document.getElementById('outro-actions');
+            if (outroActions) {
+                outroActions.classList.add('opacity-0', 'pointer-events-none');
+            }
+
+            // Hide caption bar initially
+            const captionBar = document.getElementById('cinematic-caption-bar');
+            if (captionBar) {
+                captionBar.classList.add('opacity-0', 'translate-y-2');
+                captionBar.classList.remove('opacity-100', 'translate-y-0');
+            }
+
+            // 2. Fade out launcher modal smoothly
+            const prepModal = document.getElementById('record-prep-modal');
+            if (prepModal) {
+                prepModal.style.transition = 'opacity 0.4s ease-out';
+                prepModal.style.opacity = '0';
+            }
+
+            // 3. Bring in pitch-black curtain buffer
+            const curtain = document.getElementById('black-buffer-curtain');
+            if (curtain) {
+                curtain.classList.remove('opacity-0');
+                curtain.classList.add('opacity-100');
+            }
+
+            // Freeze 3D at t = 0
+            currentTime = 0;
+            isPlaying = false;
+            updateTimeline(0);
+            renderer.render(scene, camera);
+            drawHUD(0);
+            updatePlayUI();
+
+            // Prime audio to unlock browser autoplay policy
+            if (voiceAudio) {
+                voiceAudio.load();
+            }
+
+            // 4. Clean Buffer of 2.0 seconds (pure black screen so user can hit record / trim cleanly)
+            setTimeout(() => {
+                if (prepModal) {
+                    prepModal.classList.add('hidden');
+                }
+
+                isCinematicSequence = true;
+
+                // Prepare pristine title card (starts at opacity 0, fades in)
+                const introCard = document.getElementById('cinematic-intro-card');
+                if (introCard) {
+                    introCard.style.display = 'flex';
+                    introCard.style.opacity = '0';
+                    introCard.style.transform = 'scale(0.97)';
+                    introCard.style.transition = 'opacity 1.0s cubic-bezier(0.16, 1, 0.3, 1), transform 1.2s cubic-bezier(0.16, 1, 0.3, 1)';
+                    introCard.style.pointerEvents = 'none';
+                }
+
+                // Fade out black curtain
+                if (curtain) {
+                    curtain.classList.remove('opacity-100');
+                    curtain.classList.add('opacity-0');
+                }
+
+                // Fade in title card
+                requestAnimationFrame(() => {
+                    if (introCard) {
+                        introCard.style.opacity = '1';
+                        introCard.style.transform = 'scale(1)';
+                    }
+                });
+
+                // Start AI voiceover
+                if (voiceAudio) {
+                    voiceAudio.currentTime = 0;
+                    voiceAudio.play().catch(e => {
+                        console.log('Voiceover play error (browser policy):', e);
+                    });
+                }
+            }, 2000);
+        }
+
+        function launchCinematicSequence() {
+            startCleanRecordingFlow();
+        }
+
+        function testVoiceoverAudio() {
+            if (!voiceAudio) voiceAudio = document.getElementById('voiceover-audio');
+            if (voiceAudio) {
+                voiceAudio.currentTime = 0;
+                voiceAudio.play();
+                setTimeout(() => {
+                    voiceAudio.pause();
+                    voiceAudio.currentTime = 0;
+                }, 4000);
+            }
+        }
+
+        function dismissPrepToInteractive() {
+            if (voiceAudio) {
+                voiceAudio.pause();
+                voiceAudio.currentTime = 0;
+            }
+            isCinematicSequence = false;
+
+            const prepModal = document.getElementById('record-prep-modal');
+            if (prepModal) prepModal.classList.add('hidden');
+
+            const introCard = document.getElementById('cinematic-intro-card');
+            if (introCard) introCard.style.display = 'none';
+
+            const outro = document.getElementById('cinematic-outro-card');
+            if (outro) {
+                outro.style.display = 'none';
+                outro.classList.add('opacity-0', 'pointer-events-none');
+            }
+
+            const curtain = document.getElementById('black-buffer-curtain');
+            if (curtain) curtain.classList.add('opacity-0');
+
+            const captionBar = document.getElementById('cinematic-caption-bar');
+            if (captionBar) captionBar.classList.add('opacity-0', 'translate-y-2');
+
+            // Show controls and header
+            const ctrlBar = document.getElementById('control-bar');
+            if (ctrlBar) ctrlBar.classList.remove('hidden');
+            const unhideBtn = document.getElementById('btn-unhide-ui');
+            if (unhideBtn) unhideBtn.classList.add('hidden');
+            const topHeader = document.getElementById('top-header-bar');
+            if (topHeader) topHeader.style.opacity = '1';
+
+            currentTime = 0;
+            isPlaying = true;
+            lastFrameTime = performance.now();
+            updatePlayUI();
+        }
+
+        function dismissIntroToInteractive() {
+            dismissPrepToInteractive();
+        }
+
+        function showCinematicOutro() {
+            const outro = document.getElementById('cinematic-outro-card');
+            if (outro) {
+                outro.style.display = 'flex';
+                outro.classList.remove('pointer-events-none');
+                outro.style.opacity = '0';
+                outro.style.transform = 'scale(0.98)';
+                outro.style.transition = 'opacity 1.0s cubic-bezier(0.16, 1, 0.3, 1), transform 1.0s cubic-bezier(0.16, 1, 0.3, 1)';
+                requestAnimationFrame(() => {
+                    outro.classList.remove('opacity-0');
+                    outro.style.opacity = '1';
+                    outro.style.transform = 'scale(1)';
+                });
+            }
+        }
+
+        function toggleCleanMode() {
+            isCleanUIMode = !isCleanUIMode;
+            const ctrlBar = document.getElementById('control-bar');
+            const unhideBtn = document.getElementById('btn-unhide-ui');
+            if (isCleanUIMode) {
+                if (ctrlBar) ctrlBar.classList.add('hidden');
+                if (unhideBtn) unhideBtn.classList.remove('hidden');
+            } else {
+                if (ctrlBar) ctrlBar.classList.remove('hidden');
+                if (unhideBtn) unhideBtn.classList.add('hidden');
+            }
+        }
+
+        // Keyboard Shortcuts for Easy Screen Recording (OBS / Win+G / Snipping Tool)
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                if (isCinematicSequence && voiceAudio) {
+                    if (voiceAudio.paused) {
+                        voiceAudio.play();
+                    } else {
+                        voiceAudio.pause();
+                    }
+                } else {
+                    togglePlay();
+                }
+            } else if (e.key === 'c' || e.key === 'C') {
+                toggleCleanMode();
+            } else if (e.key === 'r' || e.key === 'R') {
+                if (isCinematicSequence) {
+                    startCleanRecordingFlow();
+                } else {
+                    restartDemo();
+                }
+            } else if (e.key === 'i' || e.key === 'I') {
+                startCleanRecordingFlow();
+            } else if (e.key === 'f' || e.key === 'F') {
+                toggleFullscreen();
+            }
+        });
+
+        // --- Initialization on Load ---
+        window.addEventListener('DOMContentLoaded', () => {
+            initThree();
+            voiceAudio = document.getElementById('voiceover-audio');
+            updatePlayUI();
+            requestAnimationFrame(animate);
+        });
+    </script>
+</body>
+</html>
